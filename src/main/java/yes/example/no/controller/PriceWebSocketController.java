@@ -173,6 +173,7 @@ public class PriceWebSocketController {
             }
         }
     }
+    
     @MessageMapping("/admin/broadcast")
     public void broadcastAdminMessage(@Payload Map<String, Object> message, Principal principal) {
         // Verify admin privileges

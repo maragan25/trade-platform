@@ -14,6 +14,9 @@ import yes.example.no.dto.GroupSymbolConfig;
 import yes.example.no.repository.GroupRepository;
 import yes.example.no.repository.GroupSymbolRepository;
 
+import yes.example.no.dto.SharedDTOs.AccountDto;
+import yes.example.no.dto.SharedDTOs.SymbolDto;
+
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import java.util.Map;
 import java.util.Optional;
@@ -47,81 +50,38 @@ public class AdminController {
     @Autowired
     private AccountRepository accountRepo;  // ADD THIS
     @Autowired
-    private GroupRepository groupRepo;      // ADD THIS
+    private GroupRepository groupRepository;      // ADD THIS
     @Autowired
-    private GroupSymbolRepository groupSymbolRepo; // ADD THIS
+    private GroupSymbolRepository groupSymbolRepository; // ADD THIS
     @Autowired
     private SimpMessagingTemplate messagingTemplate;    
     @Autowired
     private PriceWebSocketController priceWebSocketController;
     
-
-        public static class AccountDto {
-        private Long id;
-        private String username;
-        private double balance;
-        private double equity;
-        private double marginUsed;
-        private double freeMargin;
-        private boolean admin;
-        private String groupName;
-        
-        public AccountDto(Account account) {
-            this.id = account.getId();
-            this.username = account.getUsername();
-            this.balance = account.getBalance();
-            this.equity = account.getEquity();
-            this.marginUsed = account.getMarginUsed();
-            this.freeMargin = account.getFreeMargin();
-            this.admin = account.isAdmin();
-            this.groupName = account.getGroup() != null ? account.getGroup().getName() : null;
+    private void notifyGroupChange(Long groupId, String changeType, String message) {
+        Optional<Group> groupOpt = groupRepository.findById(groupId);
+        if (groupOpt.isPresent()) {
+            List<Account> groupMembers = accountRepo.findByGroup(groupOpt.get());
+            List<String> usernames = groupMembers.stream()
+                    .map(Account::getUsername)
+                    .collect(Collectors.toList());
+            
+            Map<String, Object> notification = Map.of(
+                "type", changeType,
+                "groupId", groupId,
+                "groupName", groupOpt.get().getName(),
+                "message", message,
+                "timestamp", System.currentTimeMillis()
+            );
+            
+            // Broadcast to group members
+            usernames.forEach(username -> {
+                messagingTemplate.convertAndSendToUser(username, "/queue/notifications", notification);
+            });
+            
+            // Broadcast to all admins
+            messagingTemplate.convertAndSend("/topic/group-updates", notification);
         }
-        
-        // Getters and setters
-        public Long getId() { return id; }
-        public void setId(Long id) { this.id = id; }
-        public String getUsername() { return username; }
-        public void setUsername(String username) { this.username = username; }
-        public double getBalance() { return balance; }
-        public void setBalance(double balance) { this.balance = balance; }
-        public double getEquity() { return equity; }
-        public void setEquity(double equity) { this.equity = equity; }
-        public double getMarginUsed() { return marginUsed; }
-        public void setMarginUsed(double marginUsed) { this.marginUsed = marginUsed; }
-        public double getFreeMargin() { return freeMargin; }
-        public void setFreeMargin(double freeMargin) { this.freeMargin = freeMargin; }
-        public boolean isAdmin() { return admin; }
-        public void setAdmin(boolean admin) { this.admin = admin; }
-        public String getGroupName() { return groupName; }
-        public void setGroupName(String groupName) { this.groupName = groupName; }
-    }
-
-    public static class SymbolDto {
-        private Long id;
-        private String name;
-        private double bidPrice;
-        private double askPrice;
-        private boolean active;
-        
-        public SymbolDto(Symbol symbol) {
-            this.id = symbol.getId();
-            this.name = symbol.getName();
-            this.bidPrice = symbol.getBidPrice();
-            this.askPrice = symbol.getAskPrice();
-            this.active = symbol.isActive();
-        }
-        
-        // Getters and setters
-        public Long getId() { return id; }
-        public void setId(Long id) { this.id = id; }
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
-        public double getBidPrice() { return bidPrice; }
-        public void setBidPrice(double bidPrice) { this.bidPrice = bidPrice; }
-        public double getAskPrice() { return askPrice; }
-        public void setAskPrice(double askPrice) { this.askPrice = askPrice; }
-        public boolean isActive() { return active; }
-        public void setActive(boolean active) { this.active = active; }
     }
 
     @PostMapping("/price-update")
@@ -341,25 +301,6 @@ public class AdminController {
         return ResponseEntity.ok(savedAccount);
     }
 
-    @PostMapping("/accounts/{accountId}/group/{groupId}")
-    public ResponseEntity<?> assignAccountToGroup(@PathVariable Long accountId, @PathVariable Long   groupId) {
-        try {
-            Account account = accountRepo.findById(accountId).orElse(null);
-            Group group = groupRepo.findById(groupId).orElse(null); // CHANGED from groupRepository
-            
-            if (account == null || group == null) {
-                return ResponseEntity.badRequest().body("Account or Group not found");
-            }
-            
-            account.setGroup(group);
-            accountRepo.save(account); // CHANGED from accountRepository
-            
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error assigning account to group");
-        }
-    }
-
     @GetMapping("/stats/overview")
     public ResponseEntity<Map<String, Object>> getAdminOverview(Principal principal, HttpServletRequest request) {
                 adminValidationService.validateAdmin(request);
@@ -386,7 +327,7 @@ public class AdminController {
         try {
             adminValidationService.validateAdmin(request);
             
-            Group group = groupRepo.findById(groupId).orElse(null);
+            Group group = groupRepository.findById(groupId).orElse(null);
             if (group == null) {
                 return ResponseEntity.notFound().build();
             }
@@ -400,7 +341,7 @@ public class AdminController {
             group.setName(groupData.getName());
             group.setDescription(groupData.getDescription());
             group.setActive(groupData.isActive());
-            groupRepo.save(group);
+            groupRepository.save(group);
             
             // Broadcast group change
             Map<String, Object> groupUpdate = Map.of(
@@ -423,49 +364,10 @@ public class AdminController {
         }
     }
 
-    @PutMapping("/accounts/{accountId}/group/{groupId}")
-    public ResponseEntity<?> assignUserToGroup(@PathVariable Long accountId, @PathVariable Long groupId, HttpServletRequest request) {
-        try {
-            adminValidationService.validateAdmin(request);
-            
-            Account account = accountRepo.findById(accountId).orElse(null);
-            Group group = groupRepo.findById(groupId).orElse(null);
-            
-            if (account == null || group == null) {
-                return ResponseEntity.notFound().build();
-            }
-            
-            // Update user's group
-            account.setGroup(group);
-            accountRepo.save(account);
-            
-            // Broadcast user assignment change
-            Map<String, Object> assignmentUpdate = Map.of(
-                "type", "GROUP_ASSIGNMENT_CHANGED",
-                "userId", accountId,
-                "username", account.getUsername(),
-                "groupId", groupId,
-                "groupName", group.getName(),
-                "message", "Your group assignment has been updated"
-            );
-            
-            // Send to specific user
-            messagingTemplate.convertAndSendToUser(account.getUsername(), "/queue/notifications", assignmentUpdate);
-            
-            // Also broadcast generally
-            messagingTemplate.convertAndSend("/topic/group-updates", assignmentUpdate);
-            
-            return ResponseEntity.ok().build();
-            
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error assigning user: " + e.getMessage());
-        }
-    }
-    
     @PostMapping("/groups/{groupId}/symbols/add")
     public ResponseEntity<?> addSymbolsToGroup(@PathVariable Long groupId, @RequestBody List<GroupSymbolConfig> configs) {
         try {
-            Group group = groupRepo.findById(groupId).orElse(null); // CHANGED from groupRepo
+            Group group = groupRepository.findById(groupId).orElse(null);
             
             if (group == null) {
                 return ResponseEntity.badRequest().body("Group not found");
@@ -475,7 +377,7 @@ public class AdminController {
                 Symbol symbol = symbolRepo.findById((long) config.getSymbolId()).orElse(null);
                 if (symbol != null) {
                     // Check if mapping already exists
-                    Optional<GroupSymbol> existing = groupSymbolRepo.findByGroupAndSymbol(group, symbol); // CHANGED repository name
+                    Optional<GroupSymbol> existing = groupSymbolRepository.findByGroupAndSymbol(group, symbol); // CHANGED repository name
                     
                     if (existing == null) {
                         GroupSymbol groupSymbol = new GroupSymbol();
@@ -488,7 +390,7 @@ public class AdminController {
                         groupSymbol.setBidMarkupPercent(config.getBidMarkupPercent());
                         groupSymbol.setAskMarkupPercent(config.getAskMarkupPercent());
                         
-                        groupSymbolRepo.save(groupSymbol); // CHANGED repository name
+                        groupSymbolRepository.save(groupSymbol); // CHANGED repository name
                     }
                 }
             }

@@ -1,6 +1,6 @@
 package yes.example.no.dto;
 
-import yes.example.no.controller.AdminGroupController.SymbolDto;
+import yes.example.no.dto.SharedDTOs.SymbolDto;
 
 public class GroupSymbolDto {
     private Long id;

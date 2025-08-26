@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin/dashboard")
@@ -22,8 +24,34 @@ public class AdminDashboardController {
     private final SymbolRepository symbolRepo;
     private final TradeRepository tradeRepo;
     private final GroupManagementService groupManagementService;
-    private final AdminValidationService adminValidationService; // Add this
+    private final AdminValidationService adminValidationService;
+    private final org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
 
+    private void notifyGroupChange(Long groupId, String changeType, String message) {
+    Optional<Group> groupOpt = groupRepo.findById(groupId);
+    if (groupOpt.isPresent()) {
+        List<Account> groupMembers = accountRepo.findByGroup(groupOpt.get());
+        List<String> usernames = groupMembers.stream()
+                .map(Account::getUsername)
+                .collect(Collectors.toList());
+        
+        Map<String, Object> notification = Map.of(
+            "type", changeType,
+            "groupId", groupId,
+            "groupName", groupOpt.get().getName(),
+            "message", message,
+            "timestamp", System.currentTimeMillis()
+        );
+        
+        // Broadcast to group members
+        usernames.forEach(username -> {
+            messagingTemplate.convertAndSendToUser(username, "/queue/notifications", notification);
+        });
+        
+        // Broadcast to all admins
+        messagingTemplate.convertAndSend("/topic/group-updates", notification);
+    }
+}
 
     public static class DashboardStats {
         public long totalAccounts;
