@@ -656,1291 +656,1294 @@
         </div>
     </div>
 
-    <script>// Add this JavaScript to your admin.html - replace the existing script section
+    <script>
 
-        let currentAdmin = null;
-        let stompClient = null;
-        let symbols = [];
-        let accounts = [];
-        let groups = [];
-        
-        // Authentication wrapper to fix 403 errors
-        async function authenticatedFetch(url, options = {}) {
-            try {
-                return await fetch(url, {
-                    ...options,
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    }
-                });
-            } catch (error) {
-                console.error('Fetch error:', error);
-                throw error;
-            }
-        }
-        
-        // Tab Management
-        function showTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.nav-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-        
-            // Show selected tab
-            document.getElementById(tabName + 'Tab').classList.add('active');
-            event.target.classList.add('active');
-        
-            // Load data for the selected tab
-            switch(tabName) {
-                case 'dashboard':
-                    loadDashboardData();
-                    break;
-                case 'groups':
-                    loadGroups();
-                    break;
-                case 'accounts':
-                    loadAccounts();
-                    break;
-                case 'symbols':
-                    loadSymbols();
-                    break;
-            }
-        }
-        
-        // Login functionality
-        async function login(event) {
-            event.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-        
-            try {
-                const response = await fetch('/api/accounts/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({ username, password })
-                });
-        
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.account.admin) {
-                        currentAdmin = data.account;
-                        document.getElementById('loggedInUser').textContent = currentAdmin.username;
-                        document.getElementById('loginScreen').style.display = 'none';
-                        document.getElementById('adminScreen').style.display = 'block';
-                        await initializeAdminInterface();
-                    } else {
-                        showLoginError('Admin access required');
-                    }
-                } else {
-                    showLoginError('Invalid credentials');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                showLoginError('Login failed: ' + error.message);
-            }
-        }
-        
-        function showLoginError(message) {
-            const errorDiv = document.getElementById('loginError');
-            errorDiv.innerHTML = `<div class="error-message">${message}</div>`;
-        }
-        
-        async function initializeAdminInterface() {
-            console.log('Initializing admin interface...');
-            await loadDashboardData();
-            await loadSymbols();
-            await loadGroups();
-            await loadAccounts();
-            connectWebSocket();
-        }
-        
-        // Dashboard functionality
-        async function loadDashboardData() {
-            console.log('Loading dashboard data...');
-            try {
-                const response = await authenticatedFetch('/api/admin/dashboard/stats');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                const stats = await response.json();
-                
-                document.getElementById('totalAccounts').textContent = stats.totalAccounts || 0;
-                document.getElementById('totalGroups').textContent = stats.totalGroups || 0;
-                document.getElementById('totalSymbols').textContent = stats.totalSymbols || 0;
-                document.getElementById('totalBalance').textContent = `$${(stats.totalBalance || 0).toFixed(0)}`;
-                document.getElementById('unassignedUsers').textContent = stats.unassignedUsers || 0;
-            } catch (error) {
-                console.error('Error loading dashboard data:', error);
-                // Set default values on error
-                document.getElementById('totalAccounts').textContent = '0';
-                document.getElementById('totalGroups').textContent = '0';
-                document.getElementById('totalSymbols').textContent = '0';
-                document.getElementById('totalBalance').textContent = '$0';
-                document.getElementById('unassignedUsers').textContent = '0';
-            }
-        }
-        
-        // Symbol functionality - FIXED IMPLEMENTATIONS
-        async function loadSymbols() {
-            console.log('Loading symbols...');
-            try {
-                const response = await authenticatedFetch('/api/admin/symbols');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                symbols = await response.json();
-                console.log('Symbols loaded:', symbols);
-                populateSymbolDropdown();
-                renderSymbolsTable();
-            } catch (error) {
-                console.error('Error loading symbols:', error);
-                symbols = [];
-                populateSymbolDropdown();
-                renderSymbolsTable();
-            }
-        }
-        
-        function populateSymbolDropdown() {
-            const select = document.getElementById('priceSymbol');
-            if (!select) return;
-            
-            select.innerHTML = '<option value="">Select Symbol</option>';
-            
-            symbols.forEach(symbol => {
-                const option = document.createElement('option');
-                option.value = symbol.id;
-                option.textContent = symbol.name;
-                select.appendChild(option);
-            });
-        }
-        
-        function renderSymbolsTable() {
-            const tbody = document.getElementById('symbolsTableBody');
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-        
-            if (symbols.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #aaa;">No symbols found</td></tr>';
-                return;
-            }
-        
-            symbols.forEach(symbol => {
-                const row = document.createElement('tr');
-                const spread = (symbol.askPrice - symbol.bidPrice).toFixed(5);
-                
-                row.innerHTML = `
-                    <td>${symbol.name}</td>
-                    <td>${symbol.bidPrice.toFixed(5)}</td>
-                    <td>${symbol.askPrice.toFixed(5)}</td>
-                    <td>${spread}</td>
-                    <td>
-                        <span style="color: ${symbol.active ? '#4caf50' : '#f44336'}">
-                            ${symbol.active ? 'Active' : 'Inactive'}
-                        </span>
-                    </td>
-                    <td>
-                        <button class="btn btn-info" onclick="editSymbol(${symbol.id})">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteSymbol(${symbol.id})">Delete</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-        
-        // MISSING SYMBOL FUNCTIONS - NOW IMPLEMENTED
-        function showCreateSymbol() {
-            document.getElementById('createSymbolModal').style.display = 'block';
-        }
-        
-        async function createSymbol(event) {
-            event.preventDefault();
-            const name = document.getElementById('symbolName').value;
-            const bidPrice = parseFloat(document.getElementById('symbolBidPrice').value);
-            const askPrice = parseFloat(document.getElementById('symbolAskPrice').value);
-            const active = document.getElementById('symbolActive').checked;
-        
-            if (bidPrice >= askPrice) {
-                alert('Bid price must be lower than ask price');
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch('/api/admin/symbols', {
-                    method: 'POST',
-                    body: JSON.stringify({ name, bidPrice, askPrice, active })
-                });
-        
-                if (response.ok) {
-                    closeModal('createSymbolModal');
-                    await loadSymbols();
-                    showSuccess('Symbol created successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to create symbol: ' + error);
-                }
-            } catch (error) {
-                console.error('Error creating symbol:', error);
-                alert('Failed to create symbol: ' + error.message);
-            }
-        }
-        
-        async function editSymbol(symbolId) {
-            const symbol = symbols.find(s => s.id === symbolId);
-            if (!symbol) return;
-        
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            modal.style.display = 'block';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">Edit Symbol: ${symbol.name}</div>
-                    <form onsubmit="updateSymbol(event, ${symbolId})">
-                        <div class="form-group">
-                            <label>Symbol Name:</label>
-                            <input type="text" id="editSymbolName" value="${symbol.name}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Bid Price:</label>
-                            <input type="number" step="0.00001" id="editBidPrice" value="${symbol.bidPrice}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Ask Price:</label>
-                            <input type="number" step="0.00001" id="editAskPrice" value="${symbol.askPrice}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="editSymbolActive" ${symbol.active ? 'checked' : ''}>
-                                Active
-                            </label>
-                        </div>
-                        <div class="modal-buttons">
-                            <button type="button" class="btn btn-danger" onclick="closeEditModal()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Update Symbol</button>
-                        </div>
-                    </form>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-            
-            // Add close function to window
-            window.closeEditModal = function() {
-                modal.remove();
-            };
-        }
-        
-        async function updateSymbol(event, symbolId) {
-            event.preventDefault();
-            
-            const symbolData = {
-                name: document.getElementById('editSymbolName').value,
-                bidPrice: parseFloat(document.getElementById('editBidPrice').value),
-                askPrice: parseFloat(document.getElementById('editAskPrice').value),
-                active: document.getElementById('editSymbolActive').checked
-            };
-        
-            if (symbolData.bidPrice >= symbolData.askPrice) {
-                alert('Bid price must be lower than ask price');
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/symbols/${symbolId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(symbolData)
-                });
-        
-                if (response.ok) {
-                    document.querySelector('.modal').remove();
-                    await loadSymbols();
-                    showSuccess('Symbol updated successfully');
-                    
-                    // Broadcast change to clients
-                    broadcastAdminMessage({
-                        type: 'SYMBOL_UPDATED',
-                        symbolId: symbolId,
-                        message: `Symbol ${symbolData.name} updated`
-                    });
-                } else {
-                    const error = await response.text();
-                    alert('Failed to update symbol: ' + error);
-                }
-            } catch (error) {
-                console.error('Error updating symbol:', error);
-                alert('Failed to update symbol: ' + error.message);
-            }
-        }
-        
-        async function deleteSymbol(symbolId) {
-            const symbol = symbols.find(s => s.id === symbolId);
-            if (!symbol) return;
-            
-            if (!confirm(`Are you sure you want to delete symbol ${symbol.name}?`)) {
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/symbols/${symbolId}`, {
-                    method: 'DELETE'
-                });
-        
-                if (response.ok) {
-                    await loadSymbols();
-                    showSuccess('Symbol deleted successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to delete symbol: ' + error);
-                }
-            } catch (error) {
-                console.error('Error deleting symbol:', error);
-                alert('Failed to delete symbol: ' + error.message);
-            }
-        }
-        
-        // Price update functionality
-        async function updatePrice(event) {
-            event.preventDefault();
-            
-            const symbolId = document.getElementById('priceSymbol').value;
-            const bidPrice = parseFloat(document.getElementById('bidPrice').value);
-            const askPrice = parseFloat(document.getElementById('askPrice').value);
-        
-            if (!symbolId) {
-                alert('Please select a symbol');
-                return;
-            }
-        
-            if (bidPrice >= askPrice) {
-                alert('Bid price must be lower than ask price');
-                return;
-            }
-        
-            const priceUpdate = {
-                symbolId: parseInt(symbolId),
-                bidPrice: bidPrice,
-                askPrice: askPrice,
-                timestamp: Date.now()
-            };
-        
-            try {
-                const response = await authenticatedFetch('/api/admin/price-update', {
-                    method: 'POST',
-                    body: JSON.stringify(priceUpdate)
-                });
-        
-                if (response.ok) {
-                    await loadSymbols();
-                    document.getElementById('priceSymbol').value = '';
-                    document.getElementById('bidPrice').value = '';
-                    document.getElementById('askPrice').value = '';
-                    showSuccess('Price updated successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to update price: ' + error);
-                }
-            } catch (error) {
-                console.error('Error updating price:', error);
-                alert('Failed to update price: ' + error.message);
-            }
-        }
-        
-        // Groups functionality - FIXED IMPLEMENTATIONS
-        async function loadGroups() {
-            console.log('Loading groups...');
-            try {
-                const response = await authenticatedFetch('/api/admin/groups');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                groups = await response.json();
-                console.log('Groups loaded:', groups);
-                renderGroups();
-            } catch (error) {
-                console.error('Error loading groups:', error);
-                groups = [];
-                renderGroups();
-            }
-        }
-        
-        function renderGroups() {
-            const container = document.getElementById('groupsList');
-            if (!container) return;
-            
-            container.innerHTML = '';
-        
-            if (groups.length === 0) {
-                container.innerHTML = '<div style="color: #aaa; text-align: center; padding: 20px;">No groups found</div>';
-                return;
-            }
-        
-            groups.forEach(group => {
-                const groupCard = document.createElement('div');
-                groupCard.className = `group-card ${group.active ? '' : 'inactive'}`;
-                
-                groupCard.innerHTML = `
-                    <div class="group-header">
-                        <div>
-                            <div class="group-name">${group.name}</div>
-                            <div style="color: #aaa; font-size: 12px;">${group.description || 'No description'}</div>
-                            <div style="color: #aaa; font-size: 11px; margin-top: 5px;">
-                                Members: ${group.memberCount || 0} | Symbols: ${group.symbolCount || 0}
-                            </div>
-                        </div>
-                        <div class="group-actions">
-                            <button class="btn btn-info" onclick="manageGroupSymbols(${group.id})">Symbols</button>
-                            <button class="btn btn-primary" onclick="assignUsers(${group.id})">Users</button>
-                            <button class="btn btn-warning" onclick="editGroup(${group.id})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteGroup(${group.id})">Delete</button>
-                        </div>
-                    </div>
-                `;
-        
-                container.appendChild(groupCard);
-            });
-        }
-        
-        // MISSING GROUP FUNCTIONS - NOW IMPLEMENTED
-        async function editGroup(groupId) {
-            const group = groups.find(g => g.id === groupId);
-            if (!group) return;
-            
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            modal.style.display = 'block';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">Edit Group</div>
-                    <form onsubmit="updateGroup(event, ${groupId})">
-                        <div class="form-group">
-                            <label>Name:</label>
-                            <input type="text" id="editGroupName" value="${group.name}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Description:</label>
-                            <textarea id="editGroupDescription">${group.description || ''}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="editGroupActive" ${group.active ? 'checked' : ''}>
-                                Active
-                            </label>
-                        </div>
-                        <div class="modal-buttons">
-                            <button type="button" class="btn btn-danger" onclick="closeEditModal()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Update Group</button>
-                        </div>
-                    </form>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-            
-            window.closeEditModal = function() {
-                modal.remove();
-            };
-        }
-        
-        async function updateGroup(event, groupId) {
-            event.preventDefault();
-            
-            const name = document.getElementById('editGroupName').value;
-            const description = document.getElementById('editGroupDescription').value;
-            const active = document.getElementById('editGroupActive').checked;
-            
-            try {
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ name, description, active })
-                });
-                
-                if (response.ok) {
-                    document.querySelector('.modal').remove();
-                    await loadGroups();
-                    showSuccess('Group updated successfully');
-                    
-                    // Broadcast group change to all clients
-                    broadcastAdminMessage({
-                        type: 'GROUP_CHANGED',
-                        groupId: groupId,
-                        message: `Group ${name} has been updated`
-                    });
-                } else {
-                    const error = await response.text();
-                    alert('Failed to update group: ' + error);
-                }
-            } catch (error) {
-                console.error('Error updating group:', error);
-                alert('Failed to update group: ' + error.message);
-            }
-        }
-        
-        async function createGroup(event) {
-            event.preventDefault();
-            
-            const groupData = {
-                name: document.getElementById('groupName').value,
-                description: document.getElementById('groupDescription').value,
-                active: document.getElementById('groupActive').checked
-            };
-        
-            try {
-                const response = await authenticatedFetch('/api/admin/groups', {
-                    method: 'POST',
-                    body: JSON.stringify(groupData)
-                });
-        
-                if (response.ok) {
-                    closeModal('createGroupModal');
-                    await loadGroups();
-                    showSuccess('Group created successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to create group: ' + error);
-                }
-            } catch (error) {
-                console.error('Error creating group:', error);
-                alert('Failed to create group: ' + error.message);
-            }
-        }
-        
-        async function deleteGroup(groupId) {
-            const group = groups.find(g => g.id === groupId);
-            if (!group) return;
-            
-            if (!confirm(`Are you sure you want to delete group ${group.name}? This action cannot be undone.`)) {
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}`, {
-                    method: 'DELETE'
-                });
-        
-                if (response.ok) {
-                    await loadGroups();
-                    showSuccess('Group deleted successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to delete group: ' + error);
-                }
-            } catch (error) {
-                console.error('Error deleting group:', error);
-                alert('Failed to delete group: ' + error.message);
-            }
-        }
-        
-        // Group symbols management - FIXED 403 ERRORS
-        async function manageGroupSymbols(groupId) {
-            try {
-                const [groupSymbolsResponse, availableSymbolsResponse] = await Promise.all([
-                    authenticatedFetch(`/api/admin/groups/${groupId}/symbols`),
-                    authenticatedFetch(`/api/admin/groups/${groupId}/available-symbols`)
-                ]);
-        
-                if (!groupSymbolsResponse.ok || !availableSymbolsResponse.ok) {
-                    throw new Error('Failed to load group symbols data');
-                }
-        
-                const groupSymbols = await groupSymbolsResponse.json();
-                const availableSymbols = await availableSymbolsResponse.json();
-        
-                const content = document.getElementById('manageSymbolsContent');
-                content.innerHTML = `
-                    <div style="margin-bottom: 20px;">
-                        <h4>Add Symbols to Group</h4>
-                        <div class="checkbox-grid">
-                            ${availableSymbols.map(symbol => `
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="symbol_${symbol.id}" value="${symbol.id}">
-                                    <label for="symbol_${symbol.id}">${symbol.name}</label>
-                                </div>
-                            `).join('')}
-                        </div>
-                        <button class="btn btn-primary" onclick="addSymbolsToGroup(${groupId})" style="margin-top: 10px;">
-                            Add Selected Symbols
-                        </button>
-                    </div>
-                    
-                    <div>
-                        <h4>Current Group Symbols</h4>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>View</th>
-                                    <th>Trade</th>
-                                    <th>Bid Markup</th>
-                                    <th>Ask Markup</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${groupSymbols.map(gs => `
-                                    <tr>
-                                        <td>${gs.symbol.name}</td>
-                                        <td>${gs.canViewQuotes ? '✓' : '✗'}</td>
-                                        <td>${gs.canTrade ? '✓' : '✗'}</td>
-                                        <td>${gs.bidMarkup.toFixed(5)}</td>
-                                        <td>${gs.askMarkup.toFixed(5)}</td>
-                                        <td>
-                                            <button class="btn btn-warning" onclick="editGroupSymbol(${groupId}, ${gs.id}, ${gs.symbol.id})">Edit</button>
-                                            <button class="btn btn-danger" onclick="removeSymbolFromGroup(${groupId}, ${gs.symbol.id})">Remove</button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-        
-                document.getElementById('manageSymbolsModal').style.display = 'block';
-            } catch (error) {
-                console.error('Error loading group symbols:', error);
-                alert('Error loading group symbols: ' + error.message);
-            }
-        }
-        
-        // MISSING editGroupSymbol FUNCTION - NOW IMPLEMENTED
-        async function editGroupSymbol(groupId, groupSymbolId, symbolId) {
-            try {
-                // Get current group symbol data
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols`);
-                if (!response.ok) {
-                    throw new Error('Failed to load group symbol data');
-                }
-                
-                const groupSymbols = await response.json();
-                const groupSymbol = groupSymbols.find(gs => gs.id === groupSymbolId);
-                
-                if (!groupSymbol) {
-                    alert('Group symbol not found');
-                    return;
-                }
-                
-                const modal = document.createElement('div');
-                modal.className = 'modal';
-                modal.style.display = 'block';
-                modal.innerHTML = `
-                    <div class="modal-content">
-                        <div class="modal-header">Edit Group Symbol: ${groupSymbol.symbol.name}</div>
-                        <form onsubmit="updateGroupSymbol(event, ${groupId}, ${groupSymbolId})">
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="canViewQuotes" ${groupSymbol.canViewQuotes ? 'checked' : ''}>
-                                    Can View Quotes
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="canTrade" ${groupSymbol.canTrade ? 'checked' : ''}>
-                                    Can Trade
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>Bid Markup (fixed):</label>
-                                <input type="number" step="0.00001" id="bidMarkup" value="${groupSymbol.bidMarkup}">
-                            </div>
-                            <div class="form-group">
-                                <label>Ask Markup (fixed):</label>
-                                <input type="number" step="0.00001" id="askMarkup" value="${groupSymbol.askMarkup}">
-                            </div>
-                            <div class="form-group">
-                                <label>Bid Markup (%):</label>
-                                <input type="number" step="0.01" id="bidMarkupPercent" value="${groupSymbol.bidMarkupPercent}">
-                            </div>
-                            <div class="form-group">
-                                <label>Ask Markup (%):</label>
-                                <input type="number" step="0.01" id="askMarkupPercent" value="${groupSymbol.askMarkupPercent}">
-                            </div>
-                            <div class="modal-buttons">
-                                <button type="button" class="btn btn-danger" onclick="closeEditModal()">Cancel</button>
-                                <button type="submit" class="btn btn-primary">Update</button>
-                            </div>
-                        </form>
-                    </div>
-                `;
-                
-                document.body.appendChild(modal);
-                
-                window.closeEditModal = function() {
-                    modal.remove();
-                };
-                
-            } catch (error) {
-                console.error('Error loading group symbol for edit:', error);
-                alert('Error loading group symbol: ' + error.message);
-            }
-        }
-        
-        async function updateGroupSymbol(event, groupId, groupSymbolId) {
-            event.preventDefault();
-            
-            const updateData = {
-                canViewQuotes: document.getElementById('canViewQuotes').checked,
-                canTrade: document.getElementById('canTrade').checked,
-                bidMarkup: parseFloat(document.getElementById('bidMarkup').value) || 0,
-                askMarkup: parseFloat(document.getElementById('askMarkup').value) || 0,
-                bidMarkupPercent: parseFloat(document.getElementById('bidMarkupPercent').value) || 0,
-                askMarkupPercent: parseFloat(document.getElementById('askMarkupPercent').value) || 0
-            };
-            
-            try {
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols/${groupSymbolId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(updateData)
-                });
-                
-                if (response.ok) {
-                    document.querySelector('.modal').remove();
-                    await manageGroupSymbols(groupId); // Refresh the modal
-                    showSuccess('Group symbol updated successfully');
-                    
-                    // Broadcast symbol access change
-                    broadcastAdminMessage({
-                        type: 'SYMBOL_ACCESS_CHANGED',
-                        groupId: groupId,
-                        message: 'Symbol access permissions updated'
-                    });
-                } else {
-                    const error = await response.text();
-                    alert('Failed to update group symbol: ' + error);
-                }
-            } catch (error) {
-                console.error('Error updating group symbol:', error);
-                alert('Failed to update group symbol: ' + error.message);
-            }
-        }
-        
-        // Fixed removeSymbolFromGroup function
-        async function removeSymbolFromGroup(groupId, symbolId) {
-            if (!confirm('Are you sure you want to remove this symbol from the group?')) {
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols/${symbolId}`, {
-                    method: 'DELETE'
-                });
-        
-                if (response.ok) {
-                    await manageGroupSymbols(groupId); // Refresh the modal
-                    showSuccess('Symbol removed successfully');
-                    
-                    // Broadcast change
-                    broadcastAdminMessage({
-                        type: 'SYMBOL_ACCESS_CHANGED',
-                        groupId: groupId,
-                        message: 'Symbol removed from group'
-                    });
-                } else {
-                    const error = await response.text();
-                    alert('Failed to remove symbol: ' + error);
-                }
-            } catch (error) {
-                console.error('Error removing symbol:', error);
-                alert('Failed to remove symbol: ' + error.message);
-            }
-        }
-        
-        async function addSymbolsToGroup(groupId) {
-            const checkboxes = document.querySelectorAll('#manageSymbolsContent input[type="checkbox"]:checked');
-            const symbolIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-        
-            if (symbolIds.length === 0) {
-                alert('Please select at least one symbol');
-                return;
-            }
-        
-            const configs = symbolIds.map(symbolId => ({
-                symbolId: symbolId,
-                canViewQuotes: true,
-                canTrade: true,
-                bidMarkup: 0.0,
-                askMarkup: 0.0,
-                bidMarkupPercent: 0.0,
-                askMarkupPercent: 0.0
-            }));
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols/bulk`, {
-                    method: 'POST',
-                    body: JSON.stringify(configs)
-                });
-        
-                if (response.ok) {
-                    await manageGroupSymbols(groupId); // Refresh the modal
-                    showSuccess('Symbols added successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to add symbols: ' + error);
-                }
-            } catch (error) {
-                console.error('Error adding symbols:', error);
-                alert('Failed to add symbols: ' + error.message);
-            }
-        }
-        
-        // Accounts functionality
-        async function loadAccounts() {
-            console.log('Loading accounts...');
-            try {
-                const response = await authenticatedFetch('/api/admin/accounts/non-admin');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                accounts = await response.json();
-                console.log('Accounts loaded:', accounts);
-                renderAccountsTable();
-            } catch (error) {
-                console.error('Error loading accounts:', error);
-                accounts = [];
-                renderAccountsTable();
-            }
-        }
-        
-        function renderAccountsTable() {
-            const tbody = document.getElementById('accountsTableBody');
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-        
-            if (accounts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #aaa;">No accounts found</td></tr>';
-                return;
-            }
-        
-            accounts.forEach(account => {
-                const row = document.createElement('tr');
-                
-                row.innerHTML = `
-                    <td>${account.username}</td>
-                    <td>${account.balance.toFixed(2)}</td>
-                    <td>${account.equity.toFixed(2)}</td>
-                    <td>${account.groupName || 'Unassigned'}</td>
-                    <td>
-                        <span style="color: ${account.groupName ? '#4caf50' : '#ff9800'}">
-                            ${account.groupName ? 'Assigned' : 'Unassigned'}
-                        </span>
-                    </td>
-                    <td>
-                        <button class="btn btn-warning" onclick="reconcileAccount(${account.id})">Reconcile</button>
-                        <button class="btn btn-info" onclick="adjustBalance(${account.id})">Adjust Balance</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-        
-        // Emergency functions
-        function showEmergencyStop() {
-            document.getElementById('emergencyStopModal').style.display = 'block';
-        }
-        
-        async function confirmEmergencyStop() {
-            const reason = document.getElementById('emergencyReason').value;
-            if (!reason.trim()) {
-                alert('Please provide a reason for emergency stop');
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/emergency-stop-trading?reason=${encodeURIComponent(reason)}`, {
-                    method: 'POST'
-                });
-        
-                if (response.ok) {
-                    closeModal('emergencyStopModal');
-                    showSuccess('Emergency stop activated');
-                } else {
-                    alert('Failed to activate emergency stop');
-                }
-            } catch (error) {
-                console.error('Error activating emergency stop:', error);
-                alert('Failed to activate emergency stop');
-            }
-        }
-        
-        async function resumeTrading() {
-            if (!confirm('Are you sure you want to resume trading?')) {
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch('/api/admin/resume-trading', {
-                    method: 'POST'
-                });
-        
-                if (response.ok) {
-                    showSuccess('Trading resumed');
-                } else {
-                    alert('Failed to resume trading');
-                }
-            } catch (error) {
-                console.error('Error resuming trading:', error);
-                alert('Failed to resume trading');
-            }
-        }
-        
-        function showBroadcastMessage() {
-            document.getElementById('broadcastModal').style.display = 'block';
-        }
-        
-        async function sendBroadcast() {
-            const message = document.getElementById('broadcastMessage').value;
-            const type = document.getElementById('messageType').value;
-        
-            if (!message.trim()) {
-                alert('Please enter a message');
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/broadcast-message?message=${encodeURIComponent(message)}&type=${type}`, {
-                    method: 'POST'
-                });
-        
-                if (response.ok) {
-                    closeModal('broadcastModal');
-                    showSuccess('Message broadcast successfully');
-                } else {
-                    alert('Failed to broadcast message');
-                }
-            } catch (error) {
-                console.error('Error broadcasting message:', error);
-                alert('Failed to broadcast message');
-            }
-        }
-        
-        // Reconciliation functionality
-        async function reconcileAccount(accountId) {
-            try {
-                const response = await authenticatedFetch(`/api/admin/reconcile/${accountId}`, {
-                    method: 'POST'
-                });
-        
-                if (response.ok) {
-                    const result = await response.json();
-                    showReconciliationResult(accountId, result);
-                } else {
-                    alert('Failed to reconcile account');
-                }
-            } catch (error) {
-                console.error('Error reconciling account:', error);
-                alert('Failed to reconcile account');
-            }
-        }
-        
-        function showReconciliationResult(accountId, result) {
-            const hasIssues = Math.abs(result.difference) > 0.01;
-            
-            let message = `Reconciliation Results:\n`;
-            message += `Current Balance: ${result.currentBalance.toFixed(2)}\n`;
-            message += `Calculated Balance: ${result.calculatedBalance.toFixed(2)}\n`;
-            message += `Difference: ${result.difference.toFixed(2)}\n`;
-            
-            if (result.issues.length > 0) {
-                message += `\nIssues Found:\n${result.issues.join('\n')}`;
-            }
-            
-            if (hasIssues) {
-                message += `\n\nWould you like to fix the balance?`;
-                if (confirm(message)) {
-                    const reason = prompt('Enter reason for balance adjustment:');
-                    if (reason) {
-                        fixAccountBalance(accountId, reason);
-                    }
-                }
-            } else {
-                alert(message + '\n\nNo issues found.');
-            }
-        }
-        
-        async function fixAccountBalance(accountId, reason) {
-            try {
-                const response = await authenticatedFetch(`/api/admin/fix-balance/${accountId}?reason=${encodeURIComponent(reason)}`, {
-                    method: 'POST'
-                });
-        
-                if (response.ok) {
-                    await loadAccounts();
-                    showSuccess('Balance fixed successfully');
-                } else {
-                    alert('Failed to fix balance');
-                }
-            } catch (error) {
-                console.error('Error fixing balance:', error);
-                alert('Failed to fix balance');
-            }
-        }
-        
-        async function adjustBalance(accountId) {
-            const amount = prompt('Enter adjustment amount (positive to add, negative to subtract):');
-            if (amount === null || isNaN(amount) || parseFloat(amount) === 0) {
-                return;
-            }
-            
-            const reason = prompt('Enter reason for balance adjustment:');
-            if (!reason || !reason.trim()) {
-                return;
-            }
-            
-            try {
-                const response = await authenticatedFetch(`/api/admin/accounts/${accountId}/balance?amount=${amount}&reason=${encodeURIComponent(reason)}`, {
-                    method: 'PUT'
-                });
-        
-                if (response.ok) {
-                    await loadAccounts();
-                    showSuccess('Balance adjusted successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to adjust balance: ' + error);
-                }
-            } catch (error) {
-                console.error('Error adjusting balance:', error);
-                alert('Failed to adjust balance');
-            }
-        }
-        
-        // User assignment functionality
-        async function assignUsers(groupId) {
-            try {
-                const [groupMembersResponse, unassignedUsersResponse] = await Promise.all([
-                    authenticatedFetch(`/api/admin/groups/${groupId}/members`),
-                    authenticatedFetch(`/api/admin/groups/unassigned-accounts`)
-                ]);
-        
-                if (!groupMembersResponse.ok || !unassignedUsersResponse.ok) {
-                    throw new Error('Failed to load user data');
-                }
-        
-                const groupMembers = await groupMembersResponse.json();
-                const unassignedUsers = await unassignedUsersResponse.json();
-        
-                const content = document.getElementById('assignUsersContent');
-                content.innerHTML = `
-                    <div style="margin-bottom: 20px;">
-                        <h4>Assign Users to Group</h4>
-                        <div class="checkbox-grid">
-                            ${unassignedUsers.map(user => `
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="user_${user.id}" value="${user.id}">
-                                    <label for="user_${user.id}">${user.username} (${user.balance.toFixed(2)})</label>
-                                </div>
-                            `).join('')}
-                        </div>
-                        <button class="btn btn-primary" onclick="assignUsersToGroup(${groupId})" style="margin-top: 10px;">
-                            Assign Selected Users
-                        </button>
-                    </div>
-                    
-                    <div>
-                        <h4>Current Group Members</h4>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Username</th>
-                                    <th>Balance</th>
-                                    <th>Equity</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${groupMembers.map(member => `
-                                    <tr>
-                                        <td>${member.username}</td>
-                                        <td>${member.balance.toFixed(2)}</td>
-                                        <td>${member.equity.toFixed(2)}</td>
-                                        <td>
-                                            <button class="btn btn-danger" onclick="removeUserFromGroup(${groupId}, ${member.id})">Remove</button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-        
-                document.getElementById('assignUsersModal').style.display = 'block';
-            } catch (error) {
-                console.error('Error loading users:', error);
-                alert('Error loading users: ' + error.message);
-            }
-        }
-        
-        async function assignUsersToGroup(groupId) {
-            const checkboxes = document.querySelectorAll('#assignUsersContent input[type="checkbox"]:checked');
-            const userIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-        
-            if (userIds.length === 0) {
-                alert('Please select at least one user');
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/dashboard/groups/${groupId}/bulk-assign-users`, {
-                    method: 'POST',
-                    body: JSON.stringify(userIds)
-                });
-        
-                if (response.ok) {
-                    await assignUsers(groupId); // Refresh the modal
-                    showSuccess('Users assigned successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to assign users: ' + error);
-                }
-            } catch (error) {
-                console.error('Error assigning users:', error);
-                alert('Failed to assign users: ' + error.message);
-            }
-        }
-        
-        async function removeUserFromGroup(groupId, userId) {
-            if (!confirm('Are you sure you want to remove this user from the group?')) {
-                return;
-            }
-        
-            try {
-                const response = await authenticatedFetch(`/api/admin/groups/${groupId}/members/${userId}`, {
-                    method: 'DELETE'
-                });
-        
-                if (response.ok) {
-                    await assignUsers(groupId); // Refresh the modal
-                    showSuccess('User removed successfully');
-                } else {
-                    const error = await response.text();
-                    alert('Failed to remove user: ' + error);
-                }
-            } catch (error) {
-                console.error('Error removing user:', error);
-                alert('Failed to remove user: ' + error.message);
-            }
-        }
-        
-        // Utility functions
-        function closeModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.style.display = 'none';
-                // Clear form data
-                const inputs = modal.querySelectorAll('input, textarea, select');
-                inputs.forEach(input => {
-                    if (input.type === 'checkbox') {
-                        input.checked = input.defaultChecked || false;
-                    } else {
-                        input.value = '';
-                    }
-                });
-            }
-        }
-        
-        function showSuccess(message) {
-            // Create a temporary success message
-            const successDiv = document.createElement('div');
-            successDiv.className = 'success-message';
-            successDiv.textContent = message;
-            successDiv.style.position = 'fixed';
-            successDiv.style.top = '20px';
-            successDiv.style.right = '20px';
-            successDiv.style.zIndex = '9999';
-            successDiv.style.background = '#4caf50';
-            successDiv.style.color = 'white';
-            successDiv.style.padding = '15px';
-            successDiv.style.borderRadius = '5px';
-            
-            document.body.appendChild(successDiv);
-            
-            setTimeout(() => {
-                if (document.body.contains(successDiv)) {
-                    document.body.removeChild(successDiv);
-                }
-            }, 3000);
-        }
-        
-        // WebSocket functionality
-        function connectWebSocket() {
-            const socket = new SockJS('/ws');
-            stompClient = Stomp.over(socket);
-            
-            stompClient.connect({}, function(frame) {
-                console.log('Admin connected: ' + frame);
-                
-                stompClient.subscribe('/topic/prices', function(message) {
-                    loadSymbols(); // Refresh symbols when prices update
-                });
-                
-                stompClient.subscribe('/topic/admin-messages', function(message) {
-                    const data = JSON.parse(message.body);
-                    console.log('Admin message received:', data);
-                });
-            });
-        }
-        
-        function broadcastAdminMessage(message) {
-            if (stompClient && stompClient.connected) {
-                stompClient.send("/app/admin/broadcast", {}, JSON.stringify(message));
-            }
-        }
-        
-        // Logout functionality
-        async function logout() {
-            try {
-                await fetch('/api/accounts/logout', {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
-        
-            if (stompClient) {
-                stompClient.disconnect();
-            }
-            currentAdmin = null;
-            document.getElementById('loginScreen').style.display = 'block';
-            document.getElementById('adminScreen').style.display = 'none';
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
-            document.getElementById('loginError').innerHTML = '';
-        }
-        
-        // Symbol dropdown change handler
-        document.addEventListener('DOMContentLoaded', function() {
-            const priceSymbol = document.getElementById('priceSymbol');
-            if (priceSymbol) {
-                priceSymbol.addEventListener('change', function() {
-                    const symbolId = parseInt(this.value);
-                    if (symbolId) {
-                        const symbol = symbols.find(s => s.id === symbolId);
-                        if (symbol) {
-                            document.getElementById('bidPrice').value = symbol.bidPrice;
-                            document.getElementById('askPrice').value = symbol.askPrice;
-                        }
-                    }
-                });
+        // Add this JavaScript to your admin.html - replace the existing script section
+
+let currentAdmin = null;
+let stompClient = null;
+let symbols = [];
+let accounts = [];
+let groups = [];
+
+// Authentication wrapper to fix 403 errors
+async function authenticatedFetch(url, options = {}) {
+    try {
+        return await fetch(url, {
+            ...options,
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
             }
         });
-        
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            const modals = document.querySelectorAll('.modal');
-            modals.forEach(modal => {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
+    } catch (error) {
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
+// Tab Management
+function showTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    // Show selected tab
+    document.getElementById(tabName + 'Tab').classList.add('active');
+    event.target.classList.add('active');
+
+    // Load data for the selected tab
+    switch(tabName) {
+        case 'dashboard':
+            loadDashboardData();
+            break;
+        case 'groups':
+            loadGroups();
+            break;
+        case 'accounts':
+            loadAccounts();
+            break;
+        case 'symbols':
+            loadSymbols();
+            break;
+    }
+}
+
+// Login functionality
+async function login(event) {
+    event.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    try {
+        const response = await fetch('/api/accounts/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ username, password })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.account.admin) {
+                currentAdmin = data.account;
+                document.getElementById('loggedInUser').textContent = currentAdmin.username;
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('adminScreen').style.display = 'block';
+                await initializeAdminInterface();
+            } else {
+                showLoginError('Admin access required');
+            }
+        } else {
+            showLoginError('Invalid credentials');
         }
+    } catch (error) {
+        console.error('Login error:', error);
+        showLoginError('Login failed: ' + error.message);
+    }
+}
+
+function showLoginError(message) {
+    const errorDiv = document.getElementById('loginError');
+    errorDiv.innerHTML = `<div class="error-message">${message}</div>`;
+}
+
+async function initializeAdminInterface() {
+    console.log('Initializing admin interface...');
+    await loadDashboardData();
+    await loadSymbols();
+    await loadGroups();
+    await loadAccounts();
+    connectWebSocket();
+}
+
+// Dashboard functionality
+async function loadDashboardData() {
+    console.log('Loading dashboard data...');
+    try {
+        const response = await authenticatedFetch('/api/admin/dashboard/stats');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const stats = await response.json();
+        
+        document.getElementById('totalAccounts').textContent = stats.totalAccounts || 0;
+        document.getElementById('totalGroups').textContent = stats.totalGroups || 0;
+        document.getElementById('totalSymbols').textContent = stats.totalSymbols || 0;
+        document.getElementById('totalBalance').textContent = `$${(stats.totalBalance || 0).toFixed(0)}`;
+        document.getElementById('unassignedUsers').textContent = stats.unassignedUsers || 0;
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        // Set default values on error
+        document.getElementById('totalAccounts').textContent = '0';
+        document.getElementById('totalGroups').textContent = '0';
+        document.getElementById('totalSymbols').textContent = '0';
+        document.getElementById('totalBalance').textContent = '$0';
+        document.getElementById('unassignedUsers').textContent = '0';
+    }
+}
+
+// Symbol functionality - FIXED IMPLEMENTATIONS
+async function loadSymbols() {
+    console.log('Loading symbols...');
+    try {
+        const response = await authenticatedFetch('/api/admin/symbols');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        symbols = await response.json();
+        console.log('Symbols loaded:', symbols);
+        populateSymbolDropdown();
+        renderSymbolsTable();
+    } catch (error) {
+        console.error('Error loading symbols:', error);
+        symbols = [];
+        populateSymbolDropdown();
+        renderSymbolsTable();
+    }
+}
+
+function populateSymbolDropdown() {
+    const select = document.getElementById('priceSymbol');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">Select Symbol</option>';
+    
+    symbols.forEach(symbol => {
+        const option = document.createElement('option');
+        option.value = symbol.id;
+        option.textContent = symbol.name;
+        select.appendChild(option);
+    });
+}
+
+function renderSymbolsTable() {
+    const tbody = document.getElementById('symbolsTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+
+    if (symbols.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #aaa;">No symbols found</td></tr>';
+        return;
+    }
+
+    symbols.forEach(symbol => {
+        const row = document.createElement('tr');
+        const spread = (symbol.askPrice - symbol.bidPrice).toFixed(5);
+        
+        row.innerHTML = `
+            <td>${symbol.name}</td>
+            <td>${symbol.bidPrice.toFixed(5)}</td>
+            <td>${symbol.askPrice.toFixed(5)}</td>
+            <td>${spread}</td>
+            <td>
+                <span style="color: ${symbol.active ? '#4caf50' : '#f44336'}">
+                    ${symbol.active ? 'Active' : 'Inactive'}
+                </span>
+            </td>
+            <td>
+                <button class="btn btn-info" onclick="editSymbol(${symbol.id})">Edit</button>
+                <button class="btn btn-danger" onclick="deleteSymbol(${symbol.id})">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// MISSING SYMBOL FUNCTIONS - NOW IMPLEMENTED
+function showCreateSymbol() {
+    document.getElementById('createSymbolModal').style.display = 'block';
+}
+
+async function createSymbol(event) {
+    event.preventDefault();
+    const name = document.getElementById('symbolName').value;
+    const bidPrice = parseFloat(document.getElementById('symbolBidPrice').value);
+    const askPrice = parseFloat(document.getElementById('symbolAskPrice').value);
+    const active = document.getElementById('symbolActive').checked;
+
+    if (bidPrice >= askPrice) {
+        alert('Bid price must be lower than ask price');
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch('/api/admin/symbols', {
+            method: 'POST',
+            body: JSON.stringify({ name, bidPrice, askPrice, active })
+        });
+
+        if (response.ok) {
+            closeModal('createSymbolModal');
+            await loadSymbols();
+            showSuccess('Symbol created successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to create symbol: ' + error);
+        }
+    } catch (error) {
+        console.error('Error creating symbol:', error);
+        alert('Failed to create symbol: ' + error.message);
+    }
+}
+
+async function editSymbol(symbolId) {
+    const symbol = symbols.find(s => s.id === symbolId);
+    if (!symbol) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">Edit Symbol: ${symbol.name}</div>
+            <form onsubmit="updateSymbol(event, ${symbolId})">
+                <div class="form-group">
+                    <label>Symbol Name:</label>
+                    <input type="text" id="editSymbolName" value="${symbol.name}" required>
+                </div>
+                <div class="form-group">
+                    <label>Bid Price:</label>
+                    <input type="number" step="0.00001" id="editBidPrice" value="${symbol.bidPrice}" required>
+                </div>
+                <div class="form-group">
+                    <label>Ask Price:</label>
+                    <input type="number" step="0.00001" id="editAskPrice" value="${symbol.askPrice}" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="editSymbolActive" ${symbol.active ? 'checked' : ''}>
+                        Active
+                    </label>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-danger" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Symbol</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Add close function to window
+    window.closeEditModal = function() {
+        modal.remove();
+    };
+}
+
+async function updateSymbol(event, symbolId) {
+    event.preventDefault();
+    
+    const symbolData = {
+        name: document.getElementById('editSymbolName').value,
+        bidPrice: parseFloat(document.getElementById('editBidPrice').value),
+        askPrice: parseFloat(document.getElementById('editAskPrice').value),
+        active: document.getElementById('editSymbolActive').checked
+    };
+
+    if (symbolData.bidPrice >= symbolData.askPrice) {
+        alert('Bid price must be lower than ask price');
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/symbols/${symbolId}`, {
+            method: 'PUT',
+            body: JSON.stringify(symbolData)
+        });
+
+        if (response.ok) {
+            document.querySelector('.modal').remove();
+            await loadSymbols();
+            showSuccess('Symbol updated successfully');
+            
+            // Broadcast change to clients
+            broadcastAdminMessage({
+                type: 'SYMBOL_UPDATED',
+                symbolId: symbolId,
+                message: `Symbol ${symbolData.name} updated`
+            });
+        } else {
+            const error = await response.text();
+            alert('Failed to update symbol: ' + error);
+        }
+    } catch (error) {
+        console.error('Error updating symbol:', error);
+        alert('Failed to update symbol: ' + error.message);
+    }
+}
+
+async function deleteSymbol(symbolId) {
+    const symbol = symbols.find(s => s.id === symbolId);
+    if (!symbol) return;
+    
+    if (!confirm(`Are you sure you want to delete symbol ${symbol.name}?`)) {
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/symbols/${symbolId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            await loadSymbols();
+            showSuccess('Symbol deleted successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to delete symbol: ' + error);
+        }
+    } catch (error) {
+        console.error('Error deleting symbol:', error);
+        alert('Failed to delete symbol: ' + error.message);
+    }
+}
+
+// Price update functionality
+async function updatePrice(event) {
+    event.preventDefault();
+    
+    const symbolId = document.getElementById('priceSymbol').value;
+    const bidPrice = parseFloat(document.getElementById('bidPrice').value);
+    const askPrice = parseFloat(document.getElementById('askPrice').value);
+
+    if (!symbolId) {
+        alert('Please select a symbol');
+        return;
+    }
+
+    if (bidPrice >= askPrice) {
+        alert('Bid price must be lower than ask price');
+        return;
+    }
+
+    const priceUpdate = {
+        symbolId: parseInt(symbolId),
+        bidPrice: bidPrice,
+        askPrice: askPrice,
+        timestamp: Date.now()
+    };
+
+    try {
+        const response = await authenticatedFetch('/api/admin/price-update', {
+            method: 'POST',
+            body: JSON.stringify(priceUpdate)
+        });
+
+        if (response.ok) {
+            await loadSymbols();
+            document.getElementById('priceSymbol').value = '';
+            document.getElementById('bidPrice').value = '';
+            document.getElementById('askPrice').value = '';
+            showSuccess('Price updated successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to update price: ' + error);
+        }
+    } catch (error) {
+        console.error('Error updating price:', error);
+        alert('Failed to update price: ' + error.message);
+    }
+}
+
+// Groups functionality - FIXED IMPLEMENTATIONS
+async function loadGroups() {
+    console.log('Loading groups...');
+    try {
+        const response = await authenticatedFetch('/api/admin/groups');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        groups = await response.json();
+        console.log('Groups loaded:', groups);
+        renderGroups();
+    } catch (error) {
+        console.error('Error loading groups:', error);
+        groups = [];
+        renderGroups();
+    }
+}
+
+function renderGroups() {
+    const container = document.getElementById('groupsList');
+    if (!container) return;
+    
+    container.innerHTML = '';
+
+    if (groups.length === 0) {
+        container.innerHTML = '<div style="color: #aaa; text-align: center; padding: 20px;">No groups found</div>';
+        return;
+    }
+
+    groups.forEach(group => {
+        const groupCard = document.createElement('div');
+        groupCard.className = `group-card ${group.active ? '' : 'inactive'}`;
+        
+        groupCard.innerHTML = `
+            <div class="group-header">
+                <div>
+                    <div class="group-name">${group.name}</div>
+                    <div style="color: #aaa; font-size: 12px;">${group.description || 'No description'}</div>
+                    <div style="color: #aaa; font-size: 11px; margin-top: 5px;">
+                        Members: ${group.memberCount || 0} | Symbols: ${group.symbolCount || 0}
+                    </div>
+                </div>
+                <div class="group-actions">
+                    <button class="btn btn-info" onclick="manageGroupSymbols(${group.id})">Symbols</button>
+                    <button class="btn btn-primary" onclick="assignUsers(${group.id})">Users</button>
+                    <button class="btn btn-warning" onclick="editGroup(${group.id})">Edit</button>
+                    <button class="btn btn-danger" onclick="deleteGroup(${group.id})">Delete</button>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(groupCard);
+    });
+}
+
+// MISSING GROUP FUNCTIONS - NOW IMPLEMENTED
+async function editGroup(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">Edit Group</div>
+            <form onsubmit="updateGroup(event, ${groupId})">
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" id="editGroupName" value="${group.name}" required>
+                </div>
+                <div class="form-group">
+                    <label>Description:</label>
+                    <textarea id="editGroupDescription">${group.description || ''}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="editGroupActive" ${group.active ? 'checked' : ''}>
+                        Active
+                    </label>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-danger" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Group</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    window.closeEditModal = function() {
+        modal.remove();
+    };
+}
+
+async function updateGroup(event, groupId) {
+    event.preventDefault();
+    
+    const name = document.getElementById('editGroupName').value;
+    const description = document.getElementById('editGroupDescription').value;
+    const active = document.getElementById('editGroupActive').checked;
+    
+    try {
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, description, active })
+        });
+        
+        if (response.ok) {
+            document.querySelector('.modal').remove();
+            await loadGroups();
+            showSuccess('Group updated successfully');
+            
+            // Broadcast group change to all clients
+            broadcastAdminMessage({
+                type: 'GROUP_CHANGED',
+                groupId: groupId,
+                message: `Group ${name} has been updated`
+            });
+        } else {
+            const error = await response.text();
+            alert('Failed to update group: ' + error);
+        }
+    } catch (error) {
+        console.error('Error updating group:', error);
+        alert('Failed to update group: ' + error.message);
+    }
+}
+
+async function createGroup(event) {
+    event.preventDefault();
+    
+    const groupData = {
+        name: document.getElementById('groupName').value,
+        description: document.getElementById('groupDescription').value,
+        active: document.getElementById('groupActive').checked
+    };
+
+    try {
+        const response = await authenticatedFetch('/api/admin/groups', {
+            method: 'POST',
+            body: JSON.stringify(groupData)
+        });
+
+        if (response.ok) {
+            closeModal('createGroupModal');
+            await loadGroups();
+            showSuccess('Group created successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to create group: ' + error);
+        }
+    } catch (error) {
+        console.error('Error creating group:', error);
+        alert('Failed to create group: ' + error.message);
+    }
+}
+
+async function deleteGroup(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+    
+    if (!confirm(`Are you sure you want to delete group ${group.name}? This action cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            await loadGroups();
+            showSuccess('Group deleted successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to delete group: ' + error);
+        }
+    } catch (error) {
+        console.error('Error deleting group:', error);
+        alert('Failed to delete group: ' + error.message);
+    }
+}
+
+// Group symbols management - FIXED 403 ERRORS
+async function manageGroupSymbols(groupId) {
+    try {
+        const [groupSymbolsResponse, availableSymbolsResponse] = await Promise.all([
+            authenticatedFetch(`/api/admin/groups/${groupId}/symbols`),
+            authenticatedFetch(`/api/admin/groups/${groupId}/available-symbols`)
+        ]);
+
+        if (!groupSymbolsResponse.ok || !availableSymbolsResponse.ok) {
+            throw new Error('Failed to load group symbols data');
+        }
+
+        const groupSymbols = await groupSymbolsResponse.json();
+        const availableSymbols = await availableSymbolsResponse.json();
+
+        const content = document.getElementById('manageSymbolsContent');
+        content.innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <h4>Add Symbols to Group</h4>
+                <div class="checkbox-grid">
+                    ${availableSymbols.map(symbol => `
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="symbol_${symbol.id}" value="${symbol.id}">
+                            <label for="symbol_${symbol.id}">${symbol.name}</label>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="btn btn-primary" onclick="addSymbolsToGroup(${groupId})" style="margin-top: 10px;">
+                    Add Selected Symbols
+                </button>
+            </div>
+            
+            <div>
+                <h4>Current Group Symbols</h4>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>View</th>
+                            <th>Trade</th>
+                            <th>Bid Markup</th>
+                            <th>Ask Markup</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${groupSymbols.map(gs => `
+                            <tr>
+                                <td>${gs.symbol.name}</td>
+                                <td>${gs.canViewQuotes ? '✓' : '✗'}</td>
+                                <td>${gs.canTrade ? '✓' : '✗'}</td>
+                                <td>${gs.bidMarkup.toFixed(5)}</td>
+                                <td>${gs.askMarkup.toFixed(5)}</td>
+                                <td>
+                                    <button class="btn btn-warning" onclick="editGroupSymbol(${groupId}, ${gs.id}, ${gs.symbol.id})">Edit</button>
+                                    <button class="btn btn-danger" onclick="removeSymbolFromGroup(${groupId}, ${gs.symbol.id})">Remove</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        document.getElementById('manageSymbolsModal').style.display = 'block';
+    } catch (error) {
+        console.error('Error loading group symbols:', error);
+        alert('Error loading group symbols: ' + error.message);
+    }
+}
+
+// MISSING editGroupSymbol FUNCTION - NOW IMPLEMENTED
+async function editGroupSymbol(groupId, groupSymbolId, symbolId) {
+    try {
+        // Get current group symbol data
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols`);
+        if (!response.ok) {
+            throw new Error('Failed to load group symbol data');
+        }
+        
+        const groupSymbols = await response.json();
+        const groupSymbol = groupSymbols.find(gs => gs.id === groupSymbolId);
+        
+        if (!groupSymbol) {
+            alert('Group symbol not found');
+            return;
+        }
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">Edit Group Symbol: ${groupSymbol.symbol.name}</div>
+                <form onsubmit="updateGroupSymbol(event, ${groupId}, ${groupSymbolId})">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="canViewQuotes" ${groupSymbol.canViewQuotes ? 'checked' : ''}>
+                            Can View Quotes
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="canTrade" ${groupSymbol.canTrade ? 'checked' : ''}>
+                            Can Trade
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Bid Markup (fixed):</label>
+                        <input type="number" step="0.00001" id="bidMarkup" value="${groupSymbol.bidMarkup}">
+                    </div>
+                    <div class="form-group">
+                        <label>Ask Markup (fixed):</label>
+                        <input type="number" step="0.00001" id="askMarkup" value="${groupSymbol.askMarkup}">
+                    </div>
+                    <div class="form-group">
+                        <label>Bid Markup (%):</label>
+                        <input type="number" step="0.01" id="bidMarkupPercent" value="${groupSymbol.bidMarkupPercent}">
+                    </div>
+                    <div class="form-group">
+                        <label>Ask Markup (%):</label>
+                        <input type="number" step="0.01" id="askMarkupPercent" value="${groupSymbol.askMarkupPercent}">
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-danger" onclick="closeEditModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        window.closeEditModal = function() {
+            modal.remove();
+        };
+        
+    } catch (error) {
+        console.error('Error loading group symbol for edit:', error);
+        alert('Error loading group symbol: ' + error.message);
+    }
+}
+
+async function updateGroupSymbol(event, groupId, groupSymbolId) {
+    event.preventDefault();
+    
+    const updateData = {
+        canViewQuotes: document.getElementById('canViewQuotes').checked,
+        canTrade: document.getElementById('canTrade').checked,
+        bidMarkup: parseFloat(document.getElementById('bidMarkup').value) || 0,
+        askMarkup: parseFloat(document.getElementById('askMarkup').value) || 0,
+        bidMarkupPercent: parseFloat(document.getElementById('bidMarkupPercent').value) || 0,
+        askMarkupPercent: parseFloat(document.getElementById('askMarkupPercent').value) || 0
+    };
+    
+    try {
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols/${groupSymbolId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updateData)
+        });
+        
+        if (response.ok) {
+            document.querySelector('.modal').remove();
+            await manageGroupSymbols(groupId); // Refresh the modal
+            showSuccess('Group symbol updated successfully');
+            
+            // Broadcast symbol access change
+            broadcastAdminMessage({
+                type: 'SYMBOL_ACCESS_CHANGED',
+                groupId: groupId,
+                message: 'Symbol access permissions updated'
+            });
+        } else {
+            const error = await response.text();
+            alert('Failed to update group symbol: ' + error);
+        }
+    } catch (error) {
+        console.error('Error updating group symbol:', error);
+        alert('Failed to update group symbol: ' + error.message);
+    }
+}
+
+// Fixed removeSymbolFromGroup function
+async function removeSymbolFromGroup(groupId, symbolId) {
+    if (!confirm('Are you sure you want to remove this symbol from the group?')) {
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols/${symbolId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            await manageGroupSymbols(groupId); // Refresh the modal
+            showSuccess('Symbol removed successfully');
+            
+            // Broadcast change
+            broadcastAdminMessage({
+                type: 'SYMBOL_ACCESS_CHANGED',
+                groupId: groupId,
+                message: 'Symbol removed from group'
+            });
+        } else {
+            const error = await response.text();
+            alert('Failed to remove symbol: ' + error);
+        }
+    } catch (error) {
+        console.error('Error removing symbol:', error);
+        alert('Failed to remove symbol: ' + error.message);
+    }
+}
+
+async function addSymbolsToGroup(groupId) {
+    const checkboxes = document.querySelectorAll('#manageSymbolsContent input[type="checkbox"]:checked');
+    const symbolIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (symbolIds.length === 0) {
+        alert('Please select at least one symbol');
+        return;
+    }
+
+    const configs = symbolIds.map(symbolId => ({
+        symbolId: symbolId,
+        canViewQuotes: true,
+        canTrade: true,
+        bidMarkup: 0.0,
+        askMarkup: 0.0,
+        bidMarkupPercent: 0.0,
+        askMarkupPercent: 0.0
+    }));
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}/symbols/bulk`, {
+            method: 'POST',
+            body: JSON.stringify(configs)
+        });
+
+        if (response.ok) {
+            await manageGroupSymbols(groupId); // Refresh the modal
+            showSuccess('Symbols added successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to add symbols: ' + error);
+        }
+    } catch (error) {
+        console.error('Error adding symbols:', error);
+        alert('Failed to add symbols: ' + error.message);
+    }
+}
+
+// Accounts functionality
+async function loadAccounts() {
+    console.log('Loading accounts...');
+    try {
+        const response = await authenticatedFetch('/api/admin/accounts/non-admin');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        accounts = await response.json();
+        console.log('Accounts loaded:', accounts);
+        renderAccountsTable();
+    } catch (error) {
+        console.error('Error loading accounts:', error);
+        accounts = [];
+        renderAccountsTable();
+    }
+}
+
+function renderAccountsTable() {
+    const tbody = document.getElementById('accountsTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+
+    if (accounts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #aaa;">No accounts found</td></tr>';
+        return;
+    }
+
+    accounts.forEach(account => {
+        const row = document.createElement('tr');
+        
+        row.innerHTML = `
+            <td>${account.username}</td>
+            <td>${account.balance.toFixed(2)}</td>
+            <td>${account.equity.toFixed(2)}</td>
+            <td>${account.groupName || 'Unassigned'}</td>
+            <td>
+                <span style="color: ${account.groupName ? '#4caf50' : '#ff9800'}">
+                    ${account.groupName ? 'Assigned' : 'Unassigned'}
+                </span>
+            </td>
+            <td>
+                <button class="btn btn-warning" onclick="reconcileAccount(${account.id})">Reconcile</button>
+                <button class="btn btn-info" onclick="adjustBalance(${account.id})">Adjust Balance</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Emergency functions
+function showEmergencyStop() {
+    document.getElementById('emergencyStopModal').style.display = 'block';
+}
+
+async function confirmEmergencyStop() {
+    const reason = document.getElementById('emergencyReason').value;
+    if (!reason.trim()) {
+        alert('Please provide a reason for emergency stop');
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/emergency-stop-trading?reason=${encodeURIComponent(reason)}`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            closeModal('emergencyStopModal');
+            showSuccess('Emergency stop activated');
+        } else {
+            alert('Failed to activate emergency stop');
+        }
+    } catch (error) {
+        console.error('Error activating emergency stop:', error);
+        alert('Failed to activate emergency stop');
+    }
+}
+
+async function resumeTrading() {
+    if (!confirm('Are you sure you want to resume trading?')) {
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch('/api/admin/resume-trading', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            showSuccess('Trading resumed');
+        } else {
+            alert('Failed to resume trading');
+        }
+    } catch (error) {
+        console.error('Error resuming trading:', error);
+        alert('Failed to resume trading');
+    }
+}
+
+function showBroadcastMessage() {
+    document.getElementById('broadcastModal').style.display = 'block';
+}
+
+async function sendBroadcast() {
+    const message = document.getElementById('broadcastMessage').value;
+    const type = document.getElementById('messageType').value;
+
+    if (!message.trim()) {
+        alert('Please enter a message');
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/broadcast-message?message=${encodeURIComponent(message)}&type=${type}`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            closeModal('broadcastModal');
+            showSuccess('Message broadcast successfully');
+        } else {
+            alert('Failed to broadcast message');
+        }
+    } catch (error) {
+        console.error('Error broadcasting message:', error);
+        alert('Failed to broadcast message');
+    }
+}
+
+// Reconciliation functionality
+async function reconcileAccount(accountId) {
+    try {
+        const response = await authenticatedFetch(`/api/admin/reconcile/${accountId}`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            showReconciliationResult(accountId, result);
+        } else {
+            alert('Failed to reconcile account');
+        }
+    } catch (error) {
+        console.error('Error reconciling account:', error);
+        alert('Failed to reconcile account');
+    }
+}
+
+function showReconciliationResult(accountId, result) {
+    const hasIssues = Math.abs(result.difference) > 0.01;
+    
+    let message = `Reconciliation Results:\n`;
+    message += `Current Balance: ${result.currentBalance.toFixed(2)}\n`;
+    message += `Calculated Balance: ${result.calculatedBalance.toFixed(2)}\n`;
+    message += `Difference: ${result.difference.toFixed(2)}\n`;
+    
+    if (result.issues.length > 0) {
+        message += `\nIssues Found:\n${result.issues.join('\n')}`;
+    }
+    
+    if (hasIssues) {
+        message += `\n\nWould you like to fix the balance?`;
+        if (confirm(message)) {
+            const reason = prompt('Enter reason for balance adjustment:');
+            if (reason) {
+                fixAccountBalance(accountId, reason);
+            }
+        }
+    } else {
+        alert(message + '\n\nNo issues found.');
+    }
+}
+
+async function fixAccountBalance(accountId, reason) {
+    try {
+        const response = await authenticatedFetch(`/api/admin/fix-balance/${accountId}?reason=${encodeURIComponent(reason)}`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            await loadAccounts();
+            showSuccess('Balance fixed successfully');
+        } else {
+            alert('Failed to fix balance');
+        }
+    } catch (error) {
+        console.error('Error fixing balance:', error);
+        alert('Failed to fix balance');
+    }
+}
+
+async function adjustBalance(accountId) {
+    const amount = prompt('Enter adjustment amount (positive to add, negative to subtract):');
+    if (amount === null || isNaN(amount) || parseFloat(amount) === 0) {
+        return;
+    }
+    
+    const reason = prompt('Enter reason for balance adjustment:');
+    if (!reason || !reason.trim()) {
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/api/admin/accounts/${accountId}/balance?amount=${amount}&reason=${encodeURIComponent(reason)}`, {
+            method: 'PUT'
+        });
+
+        if (response.ok) {
+            await loadAccounts();
+            showSuccess('Balance adjusted successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to adjust balance: ' + error);
+        }
+    } catch (error) {
+        console.error('Error adjusting balance:', error);
+        alert('Failed to adjust balance');
+    }
+}
+
+// User assignment functionality
+async function assignUsers(groupId) {
+    try {
+        const [groupMembersResponse, unassignedUsersResponse] = await Promise.all([
+            authenticatedFetch(`/api/admin/groups/${groupId}/members`),
+            authenticatedFetch(`/api/admin/groups/unassigned-accounts`)
+        ]);
+
+        if (!groupMembersResponse.ok || !unassignedUsersResponse.ok) {
+            throw new Error('Failed to load user data');
+        }
+
+        const groupMembers = await groupMembersResponse.json();
+        const unassignedUsers = await unassignedUsersResponse.json();
+
+        const content = document.getElementById('assignUsersContent');
+        content.innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <h4>Assign Users to Group</h4>
+                <div class="checkbox-grid">
+                    ${unassignedUsers.map(user => `
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="user_${user.id}" value="${user.id}">
+                            <label for="user_${user.id}">${user.username} (${user.balance.toFixed(2)})</label>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="btn btn-primary" onclick="assignUsersToGroup(${groupId})" style="margin-top: 10px;">
+                    Assign Selected Users
+                </button>
+            </div>
+            
+            <div>
+                <h4>Current Group Members</h4>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Balance</th>
+                            <th>Equity</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${groupMembers.map(member => `
+                            <tr>
+                                <td>${member.username}</td>
+                                <td>${member.balance.toFixed(2)}</td>
+                                <td>${member.equity.toFixed(2)}</td>
+                                <td>
+                                    <button class="btn btn-danger" onclick="removeUserFromGroup(${groupId}, ${member.id})">Remove</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        document.getElementById('assignUsersModal').style.display = 'block';
+    } catch (error) {
+        console.error('Error loading users:', error);
+        alert('Error loading users: ' + error.message);
+    }
+}
+
+async function assignUsersToGroup(groupId) {
+    const checkboxes = document.querySelectorAll('#assignUsersContent input[type="checkbox"]:checked');
+    const userIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (userIds.length === 0) {
+        alert('Please select at least one user');
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/dashboard/groups/${groupId}/bulk-assign-users`, {
+            method: 'POST',
+            body: JSON.stringify(userIds)
+        });
+
+        if (response.ok) {
+            await assignUsers(groupId); // Refresh the modal
+            showSuccess('Users assigned successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to assign users: ' + error);
+        }
+    } catch (error) {
+        console.error('Error assigning users:', error);
+        alert('Failed to assign users: ' + error.message);
+    }
+}
+
+async function removeUserFromGroup(groupId, userId) {
+    if (!confirm('Are you sure you want to remove this user from the group?')) {
+        return;
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/admin/groups/${groupId}/members/${userId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            await assignUsers(groupId); // Refresh the modal
+            showSuccess('User removed successfully');
+        } else {
+            const error = await response.text();
+            alert('Failed to remove user: ' + error);
+        }
+    } catch (error) {
+        console.error('Error removing user:', error);
+        alert('Failed to remove user: ' + error.message);
+    }
+}
+
+// Utility functions
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        // Clear form data
+        const inputs = modal.querySelectorAll('input, textarea, select');
+        inputs.forEach(input => {
+            if (input.type === 'checkbox') {
+                input.checked = input.defaultChecked || false;
+            } else {
+                input.value = '';
+            }
+        });
+    }
+}
+
+function showSuccess(message) {
+    // Create a temporary success message
+    const successDiv = document.createElement('div');
+    successDiv.className = 'success-message';
+    successDiv.textContent = message;
+    successDiv.style.position = 'fixed';
+    successDiv.style.top = '20px';
+    successDiv.style.right = '20px';
+    successDiv.style.zIndex = '9999';
+    successDiv.style.background = '#4caf50';
+    successDiv.style.color = 'white';
+    successDiv.style.padding = '15px';
+    successDiv.style.borderRadius = '5px';
+    
+    document.body.appendChild(successDiv);
+    
+    setTimeout(() => {
+        if (document.body.contains(successDiv)) {
+            document.body.removeChild(successDiv);
+        }
+    }, 3000);
+}
+
+// WebSocket functionality
+function connectWebSocket() {
+    const socket = new SockJS('/ws');
+    stompClient = Stomp.over(socket);
+    
+    stompClient.connect({}, function(frame) {
+        console.log('Admin connected: ' + frame);
+        
+        stompClient.subscribe('/topic/prices', function(message) {
+            loadSymbols(); // Refresh symbols when prices update
+        });
+        
+        stompClient.subscribe('/topic/admin-messages', function(message) {
+            const data = JSON.parse(message.body);
+            console.log('Admin message received:', data);
+        });
+    });
+}
+
+function broadcastAdminMessage(message) {
+    if (stompClient && stompClient.connected) {
+        stompClient.send("/app/admin/broadcast", {}, JSON.stringify(message));
+    }
+}
+
+// Logout functionality
+async function logout() {
+    try {
+        await fetch('/api/accounts/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+
+    if (stompClient) {
+        stompClient.disconnect();
+    }
+    currentAdmin = null;
+    document.getElementById('loginScreen').style.display = 'block';
+    document.getElementById('adminScreen').style.display = 'none';
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('loginError').innerHTML = '';
+}
+
+// Symbol dropdown change handler
+document.addEventListener('DOMContentLoaded', function() {
+    const priceSymbol = document.getElementById('priceSymbol');
+    if (priceSymbol) {
+        priceSymbol.addEventListener('change', function() {
+            const symbolId = parseInt(this.value);
+            if (symbolId) {
+                const symbol = symbols.find(s => s.id === symbolId);
+                if (symbol) {
+                    document.getElementById('bidPrice').value = symbol.bidPrice;
+                    document.getElementById('askPrice').value = symbol.askPrice;
+                }
+            }
+        });
+    }
+});
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+}
+
     </script>
 </body>
 </html>

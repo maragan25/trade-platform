@@ -1,6 +1,5 @@
 package yes.example.no.controller;
 
-import yes.example.no.dto.PriceUpdateDto;
 import yes.example.no.entity.Account;
 import yes.example.no.entity.Group;
 import yes.example.no.entity.GroupSymbol;
@@ -45,19 +44,14 @@ public class AdminController {
 
     @Autowired
     private SymbolRepository symbolRepo;
-    
     @Autowired
     private AccountRepository accountRepo;  // ADD THIS
-    
     @Autowired
     private GroupRepository groupRepo;      // ADD THIS
-    
     @Autowired
     private GroupSymbolRepository groupSymbolRepo; // ADD THIS
-    
     @Autowired
-    private SimpMessagingTemplate messagingTemplate;
-    
+    private SimpMessagingTemplate messagingTemplate;    
     @Autowired
     private PriceWebSocketController priceWebSocketController;
     
@@ -468,7 +462,7 @@ public class AdminController {
         }
     }
     
-    @PostMapping("/groups/{groupId}/symbols/bulk")
+    @PostMapping("/groups/{groupId}/symbols/add")
     public ResponseEntity<?> addSymbolsToGroup(@PathVariable Long groupId, @RequestBody List<GroupSymbolConfig> configs) {
         try {
             Group group = groupRepo.findById(groupId).orElse(null); // CHANGED from groupRepo

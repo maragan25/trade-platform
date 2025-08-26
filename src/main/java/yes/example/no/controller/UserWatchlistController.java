@@ -19,13 +19,6 @@ public class UserWatchlistController {
     private final AccountRepository accountRepo;
     private final SymbolRepository symbolRepo;
 
-    @GetMapping
-    public List<Watchlist> getMyWatchlist(Principal principal) {
-        Account account = accountRepo.findByUsername(principal.getName())
-                .orElseThrow(() -> new RuntimeException("Account not found"));
-        return watchlistService.getWatchlistByAccount(account.getId());
-    }
-
     @GetMapping("/available-symbols")
     public List<Symbol> getAvailableSymbolsForWatchlist(Principal principal) {
         Account account = accountRepo.findByUsername(principal.getName())
@@ -108,4 +101,12 @@ public class UserWatchlistController {
             throw new RuntimeException("Access denied");
         }
     }
+    /* 
+    @GetMapping
+    public List<Watchlist> getMyWatchlist(Principal principal) {
+        Account account = accountRepo.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+        return watchlistService.getWatchlistByAccount(account.getId());
+    }
+     */
 }

@@ -14,6 +14,8 @@ import yes.example.no.repository.AccountRepository;
 @RequiredArgsConstructor
 public class AdminValidationService {
     
+
+    
     private final AccountRepository accountRepo;
     
     public Account validateAdmin(HttpServletRequest request) {

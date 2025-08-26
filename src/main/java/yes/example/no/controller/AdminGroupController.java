@@ -4,6 +4,9 @@ import yes.example.no.entity.*;
 import yes.example.no.repository.*;
 import yes.example.no.service.AdminValidationService;
 import yes.example.no.service.WebSocketNotificationService;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,10 +15,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import yes.example.no.service.AdminGroupService;
+
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Optional;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -33,9 +40,9 @@ public class AdminGroupController {
     private final AdminValidationService adminValidationService;
         @Autowired
     private WebSocketNotificationService notificationService;
- 
+        @Autowired
+    private AdminGroupService adminGroupService;
 
-    // DTO Classes to avoid circular references
     public static class GroupDetailDto {
         private Long id;
         private String name;
@@ -68,11 +75,10 @@ public class AdminGroupController {
         public void setSymbolCount(int symbolCount) { this.symbolCount = symbolCount; }
     }
 
-    public static class GroupSymbolDto {
-        private Long id;
-        private Long groupId;
-        private String groupName;
-        private SymbolDto symbol;
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class GroupSymbolUpdateRequest {
         private boolean canViewQuotes;
         private boolean canTrade;
         private double bidMarkup;
@@ -80,28 +86,7 @@ public class AdminGroupController {
         private double bidMarkupPercent;
         private double askMarkupPercent;
         
-        public GroupSymbolDto(GroupSymbol gs) {
-            this.id = gs.getId();
-            this.groupId = gs.getGroup().getId();
-            this.groupName = gs.getGroup().getName();
-            this.symbol = new SymbolDto(gs.getSymbol());
-            this.canViewQuotes = gs.isCanViewQuotes();
-            this.canTrade = gs.isCanTrade();
-            this.bidMarkup = gs.getBidMarkup();
-            this.askMarkup = gs.getAskMarkup();
-            this.bidMarkupPercent = gs.getBidMarkupPercent();
-            this.askMarkupPercent = gs.getAskMarkupPercent();
-        }
-        
         // Getters and setters
-        public Long getId() { return id; }
-        public void setId(Long id) { this.id = id; }
-        public Long getGroupId() { return groupId; }
-        public void setGroupId(Long groupId) { this.groupId = groupId; }
-        public String getGroupName() { return groupName; }
-        public void setGroupName(String groupName) { this.groupName = groupName; }
-        public SymbolDto getSymbol() { return symbol; }
-        public void setSymbol(SymbolDto symbol) { this.symbol = symbol; }
         public boolean isCanViewQuotes() { return canViewQuotes; }
         public void setCanViewQuotes(boolean canViewQuotes) { this.canViewQuotes = canViewQuotes; }
         public boolean isCanTrade() { return canTrade; }
@@ -116,13 +101,43 @@ public class AdminGroupController {
         public void setAskMarkupPercent(double askMarkupPercent) { this.askMarkupPercent = askMarkupPercent; }
     }
 
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class GroupSymbolDto {
+    private Long id;
+    private SymbolDto symbol;
+    private boolean canViewQuotes;
+    private boolean canTrade;
+    private double bidMarkup;
+    private double askMarkup;
+    private double bidMarkupPercent;
+    private double askMarkupPercent;
+
+    // Add this constructor that was missing:
+    public GroupSymbolDto(GroupSymbol groupSymbol) {
+        this.id = groupSymbol.getId();
+        this.symbol = new SymbolDto(groupSymbol.getSymbol());
+        this.canViewQuotes = groupSymbol.isCanViewQuotes();
+        this.canTrade = groupSymbol.isCanTrade();
+        this.bidMarkup = groupSymbol.getBidMarkup();
+        this.askMarkup = groupSymbol.getAskMarkup();
+        this.bidMarkupPercent = groupSymbol.getBidMarkupPercent();
+        this.askMarkupPercent = groupSymbol.getAskMarkupPercent();
+    }
+}
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
     public static class SymbolDto {
         private Long id;
         private String name;
         private double bidPrice;
         private double askPrice;
         private boolean active;
-        
+
+        // Add this constructor that was missing:
         public SymbolDto(Symbol symbol) {
             this.id = symbol.getId();
             this.name = symbol.getName();
@@ -130,18 +145,6 @@ public class AdminGroupController {
             this.askPrice = symbol.getAskPrice();
             this.active = symbol.isActive();
         }
-        
-        // Getters and setters
-        public Long getId() { return id; }
-        public void setId(Long id) { this.id = id; }
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
-        public double getBidPrice() { return bidPrice; }
-        public void setBidPrice(double bidPrice) { this.bidPrice = bidPrice; }
-        public double getAskPrice() { return askPrice; }
-        public void setAskPrice(double askPrice) { this.askPrice = askPrice; }
-        public boolean isActive() { return active; }
-        public void setActive(boolean active) { this.active = active; }
     }
 
     public static class AccountDto {
@@ -223,114 +226,41 @@ public class AdminGroupController {
         public double getAskMarkupPercent() { return askMarkupPercent; }
         public void setAskMarkupPercent(double askMarkupPercent) { this.askMarkupPercent = askMarkupPercent; }
     }
-/* 
-    @PutMapping("/{groupId}")
-public ResponseEntity<GroupDetailDto> updateGroup(@PathVariable Long groupId, 
-                                                 @grouprequestBody CreateGroupgrouprequest grouprequest, 
-                                                 HttpServletRequest request) {
-    try {
-                adminValidationService.validateAdmin(request); 
 
+    private void validateAdmin(Principal principal, HttpServletRequest request) {
+        adminValidationService.validateAdmin(request);
+    }
+
+    @PostMapping("/{groupId}/symbols/bulk")
+public ResponseEntity<String> addSymbolsToGroupBulk(@PathVariable Long groupId,
+                                                    @RequestBody List<Map<String, Object>> configs,
+                                                    Principal principal,
+                                                    HttpServletRequest request) {
+    adminValidationService.validateAdmin(request);
+    
+    for (Map<String, Object> config : configs) {
+        GroupSymbol groupSymbol = new GroupSymbol();
+        
+        Symbol symbol = symbolRepo.findById(((Number) config.get("symbolId")).longValue())
+                .orElseThrow(() -> new RuntimeException("Symbol not found"));
         
         Group group = groupRepo.findById(groupId)
                 .orElseThrow(() -> new RuntimeException("Group not found"));
         
-        // Check if name is being changed and if new name already exists
-        if (!group.getName().equals(grouprequest.getName()) && 
-            groupRepo.findByName(grouprequest.getName()).isPresent()) {
-            throw new RuntimeException("Group name '" + grouprequest.getName() + "' already exists");
-        }
+        groupSymbol.setGroup(group);
+        groupSymbol.setSymbol(symbol);
+        groupSymbol.setCanViewQuotes((Boolean) config.getOrDefault("canViewQuotes", true));
+        groupSymbol.setCanTrade((Boolean) config.getOrDefault("canTrade", true));
+        groupSymbol.setBidMarkup(((Number) config.getOrDefault("bidMarkup", 0.0)).doubleValue());
+        groupSymbol.setAskMarkup(((Number) config.getOrDefault("askMarkup", 0.0)).doubleValue());
+        groupSymbol.setBidMarkupPercent(((Number) config.getOrDefault("bidMarkupPercent", 0.0)).doubleValue());
+        groupSymbol.setAskMarkupPercent(((Number) config.getOrDefault("askMarkupPercent", 0.0)).doubleValue());
         
-        group.setName(grouprequest.getName());
-        group.setDescription(grouprequest.getDescription());
-        group.setActive(grouprequest.isActive());
-        
-        Group savedGroup = groupRepo.save(group);
-        
-        // Get current counts
-        int memberCount = accountRepo.findByGroup(group).size();
-        int symbolCount = groupSymbolRepo.findByGroup(group).size();
-        
-        GroupDetailDto result = new GroupDetailDto(savedGroup, memberCount, symbolCount);
-        
-        // Notify affected users about group changes
-        List<Account> members = accountRepo.findByGroup(group);
-        for (Account member : members) {
-            Map<String, Object> userNotification = new HashMap<>();
-            userNotification.put("type", "GROUP_CHANGED");
-            userNotification.put("message", "Your group settings have been updated");
-            userNotification.put("groupName", group.getName());
-            userNotification.put("timestamp", System.currentTimeMillis());
-            
-            messagingTemplate.convertAndSendToUser(
-                member.getUsername(),
-                "/queue/account",
-                userNotification
-            );
-        }
-        
-        return ResponseEntity.ok(result);
-    } catch (RuntimeException e) {
-        System.err.println("Error updating group: " + e.getMessage());
-        return ResponseEntity.badgrouprequest().build();
+        groupSymbolRepo.save(groupSymbol);
     }
+    
+    return ResponseEntity.ok("Symbols added successfully");
 }
-
-@PutMapping("/{groupId}/symbols/{groupSymbolId}")
-public ResponseEntity<GroupSymbolDto> updateGroupSymbol(@PathVariable Long groupId,
-                                                       @PathVariable Long groupSymbolId,
-                                                       @grouprequestBody GroupSymbolConfigDto config,
-                                                       HttpServletRequest request) {
-    try {
-                adminValidationService.validateAdmin(request); 
-
-        
-        Group group = groupRepo.findById(groupId)
-                .orElseThrow(() -> new RuntimeException("Group not found"));
-        
-        GroupSymbol groupSymbol = groupSymbolRepo.findById(groupSymbolId)
-                .orElseThrow(() -> new RuntimeException("Group symbol not found"));
-        
-        // Verify that the group symbol belongs to the specified group
-        if (!groupSymbol.getGroup().getId().equals(groupId)) {
-            throw new RuntimeException("Group symbol does not belong to specified group");
-        }
-        
-        // Update the group symbol configuration
-        groupSymbol.setCanViewQuotes(config.isCanViewQuotes());
-        groupSymbol.setCanTrade(config.isCanTrade());
-        groupSymbol.setBidMarkup(config.getBidMarkup());
-        groupSymbol.setAskMarkup(config.getAskMarkup());
-        groupSymbol.setBidMarkupPercent(config.getBidMarkupPercent());
-        groupSymbol.setAskMarkupPercent(config.getAskMarkupPercent());
-        
-        GroupSymbol saved = groupSymbolRepo.save(groupSymbol);
-        
-        // Notify all users in this group about symbol access changes
-        List<Account> members = accountRepo.findByGroup(group);
-        for (Account member : members) {
-            Map<String, Object> symbolNotification = new HashMap<>();
-            symbolNotification.put("type", "SYMBOL_ACCESS_CHANGED");
-            symbolNotification.put("message", "Symbol access permissions updated");
-            symbolNotification.put("symbolId", groupSymbol.getSymbol().getId());
-            symbolNotification.put("symbolName", groupSymbol.getSymbol().getName());
-            symbolNotification.put("timestamp", System.currentTimeMillis());
-            
-            messagingTemplate.convertAndSendToUser(
-                member.getUsername(),
-                "/queue/account",
-                symbolNotification
-            );
-        }
-        
-        return ResponseEntity.ok(new GroupSymbolDto(saved));
-    } catch (RuntimeException e) {
-        System.err.println("Error updating group symbol: " + e.getMessage());
-        return ResponseEntity.badgrouprequest().build();
-    }
-}
-
-*/
 
     @GetMapping
     public ResponseEntity<List<GroupDetailDto>> getAllGroups(HttpServletRequest request) {
@@ -412,100 +342,71 @@ public ResponseEntity<GroupSymbolDto> updateGroupSymbol(@PathVariable Long group
     }
 
     @GetMapping("/{groupId}/symbols/{groupSymbolId}")
-    public ResponseEntity<GroupSymbolDto> getGroupSymbol(@PathVariable Long groupId,
-                                                        @PathVariable Long groupSymbolId,
-                                                        HttpServletRequest request) {
-        try {
-                    adminValidationService.validateAdmin(request); 
+    public ResponseEntity<GroupSymbol> getGroupSymbol(@PathVariable Long groupId, 
+                                                      @PathVariable Long groupSymbolId,
+                                                      Principal principal, 
+                                                      HttpServletRequest request) {
+        adminValidationService.validateAdmin(request);
+        
+        GroupSymbol groupSymbol = adminGroupService.getGroupSymbols(groupId)
+                .stream()
+                .filter(gs -> gs.getId().equals(groupSymbolId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Group symbol not found"));
+        
+        return ResponseEntity.ok(groupSymbol);
+    }
 
-            
-            GroupSymbol groupSymbol = groupSymbolRepo.findById(groupSymbolId)
-                    .orElseThrow(() -> new RuntimeException("Group symbol not found"));
-            
-            if (!groupSymbol.getGroup().getId().equals(groupId)) {
-                throw new RuntimeException("Group symbol does not belong to specified group");
-            }
-            
-            return ResponseEntity.ok(new GroupSymbolDto(groupSymbol));
-        } catch (RuntimeException e) {
-            System.err.println("Error getting group symbol: " + e.getMessage());
-            return ResponseEntity.status(403).build();
+    @GetMapping("/{groupId}/symbols")
+    public ResponseEntity<List<GroupSymbolDto>> getGroupSymbols(
+            @PathVariable Long groupId,
+            HttpServletRequest request) {
+        
+        adminValidationService.validateAdmin(request);
+        
+        Optional<Group> groupOpt = groupRepo.findById(groupId);
+        if (groupOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
         }
+        
+        Group group = groupOpt.get();
+        List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(group);
+        
+        List<GroupSymbolDto> dtos = groupSymbols.stream()
+            .map(gs -> new GroupSymbolDto(
+                gs.getId(),
+                new SymbolDto(gs.getSymbol().getId(), gs.getSymbol().getName(), 
+                             gs.getSymbol().getBidPrice(), gs.getSymbol().getAskPrice(), 
+                             gs.getSymbol().isActive()),
+                gs.isCanViewQuotes(),
+                gs.isCanTrade(),
+                gs.getBidMarkup(),
+                gs.getAskMarkup(),
+                gs.getBidMarkupPercent(),
+                gs.getAskMarkupPercent()
+            ))
+            .collect(Collectors.toList());
+        
+        return ResponseEntity.ok(dtos);
     }
 
     @GetMapping("/{groupId}/available-symbols")
-    public ResponseEntity<List<SymbolDto>> getAvailableSymbolsForGroup(@PathVariable Long groupId, HttpServletRequest request) {
+    public ResponseEntity<List<SymbolDto>> getAvailableSymbols(@PathVariable Long groupId, Principal principal, HttpServletRequest request) {
+        validateAdmin(principal, request);        
         try {
-                    adminValidationService.validateAdmin(request); 
-
-            
-            Group group = groupRepo.findById(groupId)
-                    .orElseThrow(() -> new RuntimeException("Group not found"));
-            
-            List<Symbol> allSymbols = symbolRepo.findByActiveTrue();
-            List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(group);
-            List<Long> assignedSymbolIds = groupSymbols.stream()
-                    .map(gs -> gs.getSymbol().getId())
+            List<Symbol> availableSymbols = adminGroupService.getAvailableSymbolsForGroup(groupId);
+            List<SymbolDto> symbolDtos = availableSymbols.stream()
+                    .map(SymbolDto::new)  // Use the constructor instead of manual creation
                     .collect(Collectors.toList());
             
-            List<SymbolDto> availableSymbols = allSymbols.stream()
-                    .filter(symbol -> !assignedSymbolIds.contains(symbol.getId()))
-                    .map(SymbolDto::new)
-                    .collect(Collectors.toList());
-            
-            return ResponseEntity.ok(availableSymbols);
-        } catch (RuntimeException e) {
-            System.err.println("Error getting available symbols: " + e.getMessage());
-            return ResponseEntity.status(403).build();
-        }
-    }
-
-    @PostMapping("/{groupId}/symbols")
-    public ResponseEntity<GroupSymbolDto> addSymbolToGroup(@PathVariable Long groupId, 
-                                                          @RequestBody GroupSymbolConfigDto config, 
-                                                          HttpServletRequest request) {
-        try {
-                    adminValidationService.validateAdmin(request); 
-
-            
-            Group group = groupRepo.findById(groupId)
-                    .orElseThrow(() -> new RuntimeException("Group not found"));
-            Symbol symbol = symbolRepo.findById(config.getSymbolId())
-                    .orElseThrow(() -> new RuntimeException("Symbol not found"));
-            
-            if (groupSymbolRepo.findByGroupAndSymbol(group, symbol).isPresent()) {
-                throw new RuntimeException("Symbol already assigned to this group");
-            }
-            
-            GroupSymbol groupSymbol = new GroupSymbol();
-            groupSymbol.setGroup(group);
-            groupSymbol.setSymbol(symbol);
-            groupSymbol.setCanViewQuotes(config.isCanViewQuotes());
-            groupSymbol.setCanTrade(config.isCanTrade());
-            groupSymbol.setBidMarkup(config.getBidMarkup());
-            groupSymbol.setAskMarkup(config.getAskMarkup());
-            groupSymbol.setBidMarkupPercent(config.getBidMarkupPercent());
-            groupSymbol.setAskMarkupPercent(config.getAskMarkupPercent());
-            
-            GroupSymbol saved = groupSymbolRepo.save(groupSymbol);
-
-            Map<String, Object> symbolChangeMessage = new HashMap<>();
-            symbolChangeMessage.put("type", "SYMBOL_ACCESS_CHANGED");
-            symbolChangeMessage.put("groupId", groupId);
-            symbolChangeMessage.put("symbolId", config.getSymbolId());
-            symbolChangeMessage.put("message", "Symbol access updated for group");
-            symbolChangeMessage.put("timestamp", System.currentTimeMillis());
-            messagingTemplate.convertAndSend("/topic/admin-messages", symbolChangeMessage);
-
-            return ResponseEntity.ok(new GroupSymbolDto(saved));
-        } catch (RuntimeException e) {
-            System.err.println("Error adding symbol to group: " + e.getMessage());
+            return ResponseEntity.ok(symbolDtos);
+        } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
 
     @PutMapping("/{groupId}")
-public ResponseEntity<GroupDetailDto> updateGroup(@PathVariable Long groupId, 
+    public ResponseEntity<GroupDetailDto> updateGroup(@PathVariable Long groupId, 
                                                  @RequestBody CreateGroupRequest grouprequest, 
                                                  HttpServletRequest request) {
     try {
@@ -557,118 +458,21 @@ public ResponseEntity<GroupDetailDto> updateGroup(@PathVariable Long groupId,
 }
 
 @PutMapping("/{groupId}/symbols/{groupSymbolId}")
-public ResponseEntity<GroupSymbolDto> updateGroupSymbol(@PathVariable Long groupId,
-                                                       @PathVariable Long groupSymbolId,
-                                                       @RequestBody GroupSymbolConfigDto config,
-                                                       HttpServletRequest request) {
-    try {
-                adminValidationService.validateAdmin(request); 
-
-        
-        Group group = groupRepo.findById(groupId)
-                .orElseThrow(() -> new RuntimeException("Group not found"));
-        
-        GroupSymbol groupSymbol = groupSymbolRepo.findById(groupSymbolId)
-                .orElseThrow(() -> new RuntimeException("Group symbol not found"));
-        
-        // Verify the group symbol belongs to the specified group
-        if (!groupSymbol.getGroup().getId().equals(groupId)) {
-            throw new RuntimeException("Group symbol does not belong to specified group");
-        }
-        
-        // Update the group symbol configuration
-        groupSymbol.setCanViewQuotes(config.isCanViewQuotes());
-        groupSymbol.setCanTrade(config.isCanTrade());
-        groupSymbol.setBidMarkup(config.getBidMarkup());
-        groupSymbol.setAskMarkup(config.getAskMarkup());
-        groupSymbol.setBidMarkupPercent(config.getBidMarkupPercent());
-        groupSymbol.setAskMarkupPercent(config.getAskMarkupPercent());
-        
-        GroupSymbol saved = groupSymbolRepo.save(groupSymbol);
-        
-        // Notify affected users about symbol permission changes
-        List<Account> members = accountRepo.findByGroup(group);
-        for (Account member : members) {
-            Map<String, Object> userNotification = new HashMap<>();
-            userNotification.put("type", "SYMBOL_ACCESS_CHANGED");
-            userNotification.put("message", "Symbol permissions updated");
-            userNotification.put("symbolName", groupSymbol.getSymbol().getName());
-            userNotification.put("timestamp", System.currentTimeMillis());
-            
-            messagingTemplate.convertAndSendToUser(
-                member.getUsername(),
-                "/queue/account",
-                userNotification
-            );
-        }
-        
-        return ResponseEntity.ok(new GroupSymbolDto(saved));
-    } catch (RuntimeException e) {
-        System.err.println("Error updating group symbol: " + e.getMessage());
-        return ResponseEntity.badRequest().build();
-    }
+public ResponseEntity<GroupSymbol> updateGroupSymbol(@PathVariable Long groupId,
+                                                     @PathVariable Long groupSymbolId,
+                                                     @RequestBody GroupSymbol groupSymbol,
+                                                     Principal principal,
+                                                     HttpServletRequest request) {
+    adminValidationService.validateAdmin(request);
+    
+    GroupSymbol updated = adminGroupService.updateGroupSymbol(groupId, groupSymbolId, groupSymbol);
+    
+    // Notify clients of changes
+    notificationService.notifyGroupSymbolChanged(groupId, groupSymbolId);
+    
+    return ResponseEntity.ok(updated);
 }
 
-@PostMapping("/{groupId}/symbols/bulk")
-public ResponseEntity<List<GroupSymbolDto>> addMultipleSymbolsToGroup(@PathVariable Long groupId,
-                                                                      @RequestBody List<GroupSymbolConfigDto> configs,
-                                                                      HttpServletRequest request) {
-    try {
-                adminValidationService.validateAdmin(request); 
-
-        
-        Group group = groupRepo.findById(groupId)
-                .orElseThrow(() -> new RuntimeException("Group not found"));
-        
-        List<GroupSymbol> savedSymbols = new ArrayList<>();
-        
-        for (GroupSymbolConfigDto config : configs) {
-            Symbol symbol = symbolRepo.findById(config.getSymbolId())
-                    .orElseThrow(() -> new RuntimeException("Symbol not found: " + config.getSymbolId()));
-            
-            // Skip if already assigned
-            if (groupSymbolRepo.findByGroupAndSymbol(group, symbol).isPresent()) {
-                continue;
-            }
-            
-            GroupSymbol groupSymbol = new GroupSymbol();
-            groupSymbol.setGroup(group);
-            groupSymbol.setSymbol(symbol);
-            groupSymbol.setCanViewQuotes(config.isCanViewQuotes());
-            groupSymbol.setCanTrade(config.isCanTrade());
-            groupSymbol.setBidMarkup(config.getBidMarkup());
-            groupSymbol.setAskMarkup(config.getAskMarkup());
-            groupSymbol.setBidMarkupPercent(config.getBidMarkupPercent());
-            groupSymbol.setAskMarkupPercent(config.getAskMarkupPercent());
-            
-            savedSymbols.add(groupSymbolRepo.save(groupSymbol));
-        }
-        
-        // Notify affected users
-        List<Account> members = accountRepo.findByGroup(group);
-        for (Account member : members) {
-            Map<String, Object> userNotification = new HashMap<>();
-            userNotification.put("type", "SYMBOL_ACCESS_CHANGED");
-            userNotification.put("message", "New symbols added to your group");
-            userNotification.put("timestamp", System.currentTimeMillis());
-            
-            messagingTemplate.convertAndSendToUser(
-                member.getUsername(),
-                "/queue/account",
-                userNotification
-            );
-        }
-        
-        List<GroupSymbolDto> result = savedSymbols.stream()
-                .map(GroupSymbolDto::new)
-                .collect(Collectors.toList());
-                
-        return ResponseEntity.ok(result);
-    } catch (RuntimeException e) {
-        System.err.println("Error adding multiple symbols to group: " + e.getMessage());
-        return ResponseEntity.badRequest().build();
-    }
-}
 
     @DeleteMapping("/{groupId}/symbols/{symbolId}")
     public ResponseEntity<Void> removeSymbolFromGroup(@PathVariable Long groupId, 
@@ -726,52 +530,27 @@ public ResponseEntity<List<GroupSymbolDto>> addMultipleSymbolsToGroup(@PathVaria
         }
     }
 
-    @DeleteMapping("/{groupId}/members/{accountId}")
-    public ResponseEntity<AccountDto> removeAccountFromGroup(@PathVariable Long groupId, 
-                                                            @PathVariable Long accountId, 
-                                                            HttpServletRequest request) {
-        try {
-                    adminValidationService.validateAdmin(request); 
-
-            
-            Account account = accountRepo.findById(accountId)
-                    .orElseThrow(() -> new RuntimeException("Account not found"));
-            
-            if (account.getGroup() == null || !account.getGroup().getId().equals(groupId)) {
-                throw new RuntimeException("Account is not in the specified group");
-            }
-            
-            account.setGroup(null);
-            Account saved = accountRepo.save(account);
-            return ResponseEntity.ok(new AccountDto(saved));
-        } catch (RuntimeException e) {
-            System.err.println("Error removing account from group: " + e.getMessage());
-            return ResponseEntity.status(403).build();
-        }
-    }
-
     @DeleteMapping("/{groupId}/members/{userId}")
-    public ResponseEntity<?> removeUserFromGroup(@PathVariable Long groupId, @PathVariable Long userId, HttpServletRequest request) {
-        try {
-            adminValidationService.validateAdmin(request);            
-            Account account = accountRepo.findById(userId).orElse(null);
-            if (account == null) {
-                return ResponseEntity.notFound().build();
-            }
-            
-            account.setGroup(null);
-            accountRepo.save(account);
-            
-            // Notify the user that their group has changed
-            notificationService.notifyGroupChange(groupId, List.of(account.getUsername()), "You have been removed from your group");
-            
-            return ResponseEntity.ok().build();
-            
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
+    public ResponseEntity<String> removeUserFromGroup(
+            @PathVariable Long groupId,
+            @PathVariable Long userId,
+            HttpServletRequest request) {
+        
+        adminValidationService.validateAdmin(request);
+        
+        Optional<Group> groupOpt = groupRepo.findById(groupId);
+        Optional<Account> accountOpt = accountRepo.findById(userId);
+        
+        if (groupOpt.isEmpty() || accountOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
         }
+        
+        Account account = accountOpt.get();
+        account.setGroup(null);
+        accountRepo.save(account);
+        
+        return ResponseEntity.ok("User removed from group successfully");
     }
-
 
     @DeleteMapping("/{groupId}")
     public ResponseEntity<Void> deleteGroup(@PathVariable Long groupId, HttpServletRequest request) {
@@ -817,7 +596,7 @@ public ResponseEntity<List<GroupSymbolDto>> addMultipleSymbolsToGroup(@PathVaria
     }
 
     @PostMapping("/{groupId}/bulk-assign-users")
-public ResponseEntity<List<AccountDto>> bulkAssignUsersToGroup(@PathVariable Long groupId,
+    public ResponseEntity<List<AccountDto>> bulkAssignUsersToGroup(@PathVariable Long groupId,
                                                               @RequestBody List<Long> userIds,
                                                               HttpServletRequest request) {
     try {
@@ -866,41 +645,30 @@ public ResponseEntity<List<AccountDto>> bulkAssignUsersToGroup(@PathVariable Lon
     }
 }
 
-/*    
-    @PostMapping("/admin/broadcast-message")
-public ResponseEntity<?> broadcastMessage(
-        @RequestParam String message,
-        @RequestParam(defaultValue = "info") String type,
-        HttpServletRequest grouprequest) {
-    
-    if (!validateAdmin(grouprequest)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Admin access required");
-        }
+    @PostMapping("/broadcast-group-change")
+    public ResponseEntity<String> broadcastGroupChange(
+            @RequestParam Long groupId,
+            @RequestParam String changeType,
+            HttpServletRequest request) {
         
-        Map<String, Object> broadcastMessage = new HashMap<>();
-        broadcastMessage.put("type", "ADMIN_MESSAGE");
-        broadcastMessage.put("message", message);
-        broadcastMessage.put("messageType", type);
-        broadcastMessage.put("timestamp", System.currentTimeMillis());
+        adminValidationService.validateAdmin(request);
         
-        messagingTemplate.convertAndSend("/topic/admin-messages", broadcastMessage);
-        
-        return ResponseEntity.ok("Message broadcast successfully");
-    }
-    
-        private boolean validateAdmin(HttpServletRequest grouprequest) {
-            // TODO Auto-generated method stub
-            throw new UnsupportedOperationException("Unimplemented method 'validateAdmin'");
+        // Broadcast to all users in the affected group
+        List<Account> groupMembers = accountRepo.findByGroupId(groupId);
+        for (Account member : groupMembers) {
+            Map<String, Object> notification = Map.of(
+                "type", changeType,
+                "message", "Your group access has been updated",
+                "groupId", groupId
+            );
+            
+            messagingTemplate.convertAndSendToUser(
+                member.getUsername(), 
+                "/queue/notifications", 
+                notification
+            );
         }
     
-        @PostMapping("/admin/emergency-stop-trading")
-public ResponseEntity<?> emergencyStopTrading(
-        @RequestParam String reason,
-        HttpServletRequest grouprequest) {
-    
-    if (!validateAdmin(grouprequest)) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Admin access required");
-    }
-    }
-*/
+    return ResponseEntity.ok("Notification sent");
+}
 }

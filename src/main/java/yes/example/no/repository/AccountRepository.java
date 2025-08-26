@@ -13,5 +13,7 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     List<Account> findByGroupIsNullAndIsAdminFalse();
     List<Account> findByIsAdminFalse();
     List<Account> findByIsAdminTrue();
+    List<Account> findByGroupId(Long groupId);
     Optional<Account> findByUsernameAndIsAdminTrue(String username);
+    long countByGroupId(Long groupId);
 }

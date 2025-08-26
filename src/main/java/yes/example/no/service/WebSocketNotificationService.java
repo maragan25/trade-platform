@@ -58,5 +58,10 @@ public class WebSocketNotificationService {
         
         messagingTemplate.convertAndSend("/topic/admin-messages", adminMessage);
     }
+
+    public void notifyGroupSymbolChanged(Long groupId, Long groupSymbolId) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'notifyGroupSymbolChanged'");
+    }
 }
 

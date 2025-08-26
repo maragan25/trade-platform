@@ -626,387 +626,146 @@
         </div>
     </div>
 
-    <script>
+    <script>// Replace the entire <script> section in your index.html with this
+
         let currentUser = null;
         let stompClient = null;
-        let currentSymbols = [];
+        let watchlist = [];
         let openTrades = [];
         let tradeHistory = [];
         let selectedSymbol = null;
         let currentPrices = {};
-
-        // Login functionality
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 5;
+        
         async function login(event) {
             event.preventDefault();
-            
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-            
-            console.log('Attempting login for:', username);
-            
-            if (!username || !password) {
-                showLoginError('Please enter both username and password');
-                return;
-            }
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
             
             try {
                 const response = await fetch('/api/accounts/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body: JSON.stringify({ username, password })
                 });
                 
-                console.log('Login response status:', response.status);
-                
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Login successful:', data);
-                    
                     currentUser = data.account;
                     document.getElementById('loggedInUser').textContent = currentUser.username;
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('tradingScreen').style.display = 'block';
-                    
                     await initializeTradingInterface();
                 } else {
-                    const errorText = await response.text();
-                    console.error('Login failed:', errorText);
                     showLoginError('Invalid credentials');
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showLoginError('Login failed - please try again');
+                showLoginError('Login failed: ' + error.message);
             }
         }
-
+        
         function showLoginError(message) {
             document.getElementById('loginError').innerHTML = `<div class="error-message">${message}</div>`;
         }
-
+        
         async function initializeTradingInterface() {
-    updateAccountDisplay();
-    await loadWatchlist();
-    await loadOpenTrades();
-    await loadTradeHistory();
-    connectWebSocket();
-    startConnectionMonitoring();
-}
-
-
+            updateAccountDisplay();
+            await loadWatchlist();
+            await loadOpenTrades();
+            await loadTradeHistory();
+            connectWebSocket();
+        }
+        
         function updateAccountDisplay() {
-            if (!currentUser) return;
-            
             document.getElementById('accountBalance').textContent = '$' + currentUser.balance.toFixed(2);
             document.getElementById('accountEquity').textContent = '$' + currentUser.equity.toFixed(2);
             document.getElementById('accountMargin').textContent = '$' + currentUser.marginUsed.toFixed(2);
             document.getElementById('accountFreeMargin').textContent = '$' + currentUser.freeMargin.toFixed(2);
-            document.getElementById('userGroup').textContent = currentUser.group ? currentUser.group.name : 'Unassigned';
-        }
-
-        // WebSocket connection
-        function connectWebSocket() {
-    const socket = new SockJS('/ws');
-    stompClient = Stomp.over(socket);
-    
-    stompClient.connect({}, function(frame) {
-        console.log('Connected: ' + frame);
-        
-        // Subscribe to price updates
-        stompClient.subscribe('/user/queue/prices', function(message) {
-            const priceData = JSON.parse(message.body);
-            handlePriceUpdate(priceData);
-        });
-        
-        // Subscribe to account updates  
-        stompClient.subscribe('/user/queue/account', function(message) {
-            const accountData = JSON.parse(message.body);
-            handleAccountUpdate(accountData);
-        });
-        
-        // Subscribe to notifications (group changes, etc.)
-        stompClient.subscribe('/user/queue/notifications', function(message) {
-            const notification = JSON.parse(message.body);
-            handleUserNotification(notification);
-        });
-        
-        // Subscribe to symbol refresh requests
-        stompClient.subscribe('/user/queue/symbol-refresh', function(message) {
-            const refreshData = JSON.parse(message.body);
-            handleSymbolRefresh(refreshData);
-        });
-        
-        // Subscribe to general admin messages
-        stompClient.subscribe('/topic/admin-messages', function(message) {
-            const adminMessage = JSON.parse(message.body);
-            handleAdminMessage(adminMessage);
-        });
-        
-        // Subscribe to group updates
-        stompClient.subscribe('/topic/group-updates', function(message) {
-            const groupUpdate = JSON.parse(message.body);
-            handleGroupUpdate(groupUpdate);
-        });
-        
-        // Subscribe to general price updates
-        stompClient.subscribe('/topic/prices', function(message) {
-            const priceUpdate = JSON.parse(message.body);
-            handlePriceUpdate(priceUpdate);
-        });
-        
-        // Request initial data after connection
-        if (currentUser) {
-            stompClient.send("/app/subscribe", {}, JSON.stringify({
-                username: currentUser.username
-            }));
+            document.getElementById('userGroup').textContent = currentUser.group ? currentUser.group.name : 'None';
         }
         
-    }, function(error) {
-        console.error('WebSocket connection failed:', error);
-        // Attempt to reconnect after 3 seconds
-        setTimeout(connectWebSocket, 3000);
-    });
-}
-
-function handlePriceUpdate(priceData) {
-    if (Array.isArray(priceData)) {
-        // Multiple price updates
-        priceData.forEach(price => {
-            currentPrices[price.symbolId] = price;
-        });
-    } else {
-        // Single price update
-        currentPrices[priceData.symbolId] = priceData;
-    }
-    
-    // Update displays
-    updatePriceDisplays();
-    
-    // Show flash animation for price changes
-    flashPriceUpdate(priceData.symbolId || priceData[0]?.symbolId);
-}
-
-function handleAccountUpdate(accountData) {
-    if (currentUser) {
-        currentUser.balance = accountData.balance;
-        currentUser.equity = accountData.equity;
-        currentUser.marginUsed = accountData.marginUsed;
-        currentUser.freeMargin = accountData.freeMargin;
-        updateAccountDisplay();
-        
-        // Flash animation for account changes
-        flashAccountUpdate();
-    }
-}
-
-function handleUserNotification(notification) {
-    console.log('User notification received:', notification);
-    
-    switch(notification.type) {
-        case 'GROUP_CHANGED':
-        case 'GROUP_ASSIGNMENT_CHANGED':
-            showNotification('Your group assignment has been updated', 'info');
-            // Refresh user data and watchlist
-            refreshUserData();
-            break;
-            
-        case 'SYMBOL_ACCESS_CHANGED':
-            showNotification('Your trading permissions have been updated', 'info');
-            // Refresh watchlist
-            loadWatchlist();
-            break;
-            
-        default:
-            if (notification.message) {
-                showNotification(notification.message, 'info');
+        async function loadWatchlist() {
+            try {
+                const response = await fetch('/api/user/watchlist', { credentials: 'include' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                watchlist = await response.json();
+                renderWatchlist();
+            } catch (error) {
+                console.error('Error loading watchlist:', error);
+                watchlist = [];
+                renderWatchlist();
             }
-    }
-}
-
-function handleSymbolRefresh(refreshData) {
-    console.log('Symbol refresh requested:', refreshData);
-    
-    // Refresh the user's watchlist
-    loadWatchlist();
-    
-    // If user has a selected symbol that might be affected, refresh it
-    if (selectedSymbol && refreshData.symbolId === selectedSymbol.id) {
-        // Re-select the symbol to get updated permissions
-        setTimeout(() => {
-            selectSymbolById(selectedSymbol.id);
-        }, 500);
-    }
-}
-
-
-
-        // Display symbols in sidebar
-        function displaySymbols(symbols) {
-            console.log('Displaying symbols:', symbols);
-            const container = document.getElementById('symbolContainer');
+        }
+        
+        function renderWatchlist() {
+            const container = document.getElementById('watchlistContainer');
+            container.innerHTML = '';
             
-            if (!symbols || symbols.length === 0) {
-                container.innerHTML = '<div class="no-symbols">No symbols available in your group</div>';
+            if (watchlist.length === 0) {
+                container.innerHTML = '<div style="color: #aaa; font-size: 12px;">No symbols available</div>';
                 return;
             }
             
-            container.innerHTML = '';
-            
-            symbols.forEach(symbol => {
+            watchlist.forEach(item => {
                 const symbolDiv = document.createElement('div');
-                symbolDiv.className = 'symbol-item';
-                symbolDiv.id = `symbol-${symbol.symbolId}`;
-                symbolDiv.onclick = () => selectSymbol(symbol);
+                symbolDiv.className = 'watchlist-item';
+                symbolDiv.onclick = () => selectSymbol(item.symbol);
                 
+                const prices = currentPrices[item.symbol.id] || item.symbol;
                 symbolDiv.innerHTML = `
-                    <div class="symbol-header">
-                        <div class="symbol-name">${symbol.symbolName}</div>
-                        <div class="symbol-timestamp">${new Date(symbol.timestamp).toLocaleTimeString()}</div>
-                    </div>
+                    <div class="symbol-name">${item.symbol.name}</div>
                     <div class="symbol-prices">
-                        <div class="price-group">
-                            <div class="price-label">BID</div>
-                            <div class="bid-price" id="bid-${symbol.symbolId}">${symbol.bidPrice.toFixed(5)}</div>
-                        </div>
-                        <div class="price-group">
-                            <div class="price-label">ASK</div>
-                            <div class="ask-price" id="ask-${symbol.symbolId}">${symbol.askPrice.toFixed(5)}</div>
-                        </div>
-                    </div>
-                    <div class="trading-buttons">
-                        <button class="btn-buy" onclick="event.stopPropagation(); quickTrade(${symbol.symbolId}, 'BUY', ${symbol.askPrice})">BUY</button>
-                        <button class="btn-sell" onclick="event.stopPropagation(); quickTrade(${symbol.symbolId}, 'SELL', ${symbol.bidPrice})">SELL</button>
+                        <div class="bid-price">${prices.bidPrice ? prices.bidPrice.toFixed(5) : '-'}</div>
+                        <div class="ask-price">${prices.askPrice ? prices.askPrice.toFixed(5) : '-'}</div>
                     </div>
                 `;
-                
                 container.appendChild(symbolDiv);
             });
         }
-
-        // Update individual symbol price
-        function updateSymbolPrice(symbolUpdate) {
-            const bidElement = document.getElementById(`bid-${symbolUpdate.symbolId}`);
-            const askElement = document.getElementById(`ask-${symbolUpdate.symbolId}`);
-            
-            if (bidElement && askElement) {
-                // Add flash animation
-                bidElement.classList.add('price-updated');
-                askElement.classList.add('price-updated');
-                
-                bidElement.textContent = symbolUpdate.bidPrice.toFixed(5);
-                askElement.textContent = symbolUpdate.askPrice.toFixed(5);
-                
-                setTimeout(() => {
-                    bidElement.classList.remove('price-updated');
-                    askElement.classList.remove('price-updated');
-                }, 800);
-            }
-            
-            // Update selected symbol if it matches
-            if (selectedSymbol && selectedSymbol.symbolId === symbolUpdate.symbolId) {
-                document.getElementById('selectedBidPrice').textContent = symbolUpdate.bidPrice.toFixed(5);
-                document.getElementById('selectedAskPrice').textContent = symbolUpdate.askPrice.toFixed(5);
-            }
-            
-            // Update open trades display
-            renderOpenTrades();
-        }
-
-        // Select symbol for detailed trading
+        
         function selectSymbol(symbol) {
-            console.log('Selecting symbol:', symbol);
             selectedSymbol = symbol;
+            document.getElementById('selectedSymbol').textContent = symbol.name;
             
-            // Update UI
-            document.querySelectorAll('.symbol-item').forEach(item => item.classList.remove('selected'));
-            document.getElementById(`symbol-${symbol.symbolId}`).classList.add('selected');
+            const prices = currentPrices[symbol.id] || symbol;
+            document.getElementById('bidPrice').textContent = prices.bidPrice ? prices.bidPrice.toFixed(5) : '-';
+            document.getElementById('askPrice').textContent = prices.askPrice ? prices.askPrice.toFixed(5) : '-';
             
-            // Update trading panel
-            document.getElementById('selectedSymbolName').textContent = symbol.symbolName;
-            document.getElementById('selectedBidPrice').textContent = symbol.bidPrice.toFixed(5);
-            document.getElementById('selectedAskPrice').textContent = symbol.askPrice.toFixed(5);
-            document.getElementById('selectedSymbolPrices').style.display = 'block';
-            
-            // Enable trade buttons
             document.getElementById('buyBtn').disabled = false;
             document.getElementById('sellBtn').disabled = false;
-        }
-
-        // Quick trade from sidebar
-        function quickTrade(symbolId, type, price) {
-            const symbol = currentSymbols.find(s => s.symbolId === symbolId);
-            if (!symbol) return;
             
-            const volume = prompt(`Enter volume for ${type} ${symbol.symbolName}:`, '1.0');
-            if (!volume || isNaN(volume) || parseFloat(volume) <= 0) {
+            // Update selected state
+            document.querySelectorAll('.watchlist-item').forEach(item => item.classList.remove('selected'));
+            event.target.closest('.watchlist-item').classList.add('selected');
+        }
+        
+        async function openTrade(type) {
+            if (!selectedSymbol) {
+                alert('Please select a symbol first');
                 return;
             }
             
-            executeTrade(symbolId, type, parseFloat(volume), price);
-        }
-
-        async function openTrade(type) {
-    if (!selectedSymbol) { 
-        showNotification('Please select a symbol first', 'warning'); 
-        return; 
-    }
-    
-    const volume = parseFloat(document.getElementById('tradeVolume').value);
-    if (volume <= 0) { 
-        showNotification('Please enter a valid volume', 'warning'); 
-        return; 
-    }
-    
-    const prices = currentPrices[selectedSymbol.id] || selectedSymbol;
-    const openingPrice = (type === 'BUY') ? prices.askPrice : prices.bidPrice;
-    
-    const tradeRequest = { 
-        symbolId: selectedSymbol.id, 
-        type: type, 
-        size: volume, 
-        openingPrice: openingPrice 
-    };
-    
-    try {
-        const response = await fetch('/api/trades/open', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(tradeRequest)
-        });
-        
-        if (response.ok) {
-            const trade = await response.json();
-            showNotification(`${type} trade opened for ${volume} units`, 'success');
+            const volume = parseFloat(document.getElementById('tradeVolume').value);
+            if (!volume || volume <= 0) {
+                alert('Please enter a valid volume');
+                return;
+            }
             
-            // Clear volume input
-            document.getElementById('tradeVolume').value = '';
+            const prices = currentPrices[selectedSymbol.id] || selectedSymbol;
+            const openingPrice = (type === 'BUY') ? prices.askPrice : prices.bidPrice;
             
-            // Trades and account will be updated via WebSocket
-            // But also refresh immediately for better UX
-            setTimeout(() => {
-                loadOpenTrades();
-            }, 500);
-            
-        } else {
-            const error = await response.text();
-            showNotification('Failed to open trade: ' + error, 'error');
-        }
-    } catch (error) {
-        console.error('Error opening trade:', error);
-        showNotification('Failed to open trade: ' + error.message, 'error');
-    }
-}
-
-
-        // Execute trade
-        async function executeTrade(symbolId, type, volume, openingPrice) {
-            console.log(`Executing ${type} trade:`, { symbolId, volume, openingPrice });
+            if (!openingPrice) {
+                alert('Price not available');
+                return;
+            }
             
             const tradeRequest = {
-                symbolId: symbolId,
+                symbolId: selectedSymbol.id,
                 type: type,
                 size: volume,
                 openingPrice: openingPrice
@@ -1023,158 +782,123 @@ function handleSymbolRefresh(refreshData) {
                 if (response.ok) {
                     const trade = await response.json();
                     console.log('Trade opened:', trade);
-                    
-                    const symbol = currentSymbols.find(s => s.symbolId === symbolId);
-                    showNotification(`${type} trade opened: ${volume} ${symbol ? symbol.symbolName : 'units'}`, 'success');
-                    
+                    document.getElementById('tradeVolume').value = '';
                     await loadOpenTrades();
+                    // Account will be updated via WebSocket
                 } else {
                     const error = await response.text();
-                    console.error('Trade failed:', error);
-                    showNotification('Failed to open trade: ' + error, 'error');
+                    alert('Failed to open trade: ' + error);
                 }
             } catch (error) {
                 console.error('Error opening trade:', error);
-                showNotification('Failed to open trade', 'error');
+                alert('Failed to open trade: ' + error.message);
             }
         }
-
-        async function closeTrade(tradeId) {
-    const trade = openTrades.find(t => t.id === tradeId);
-    if (!trade) return;
-    
-    const prices = currentPrices[trade.symbol.id] || trade.symbol;
-    const closingPrice = (trade.type === 'BUY') ? prices.bidPrice : prices.askPrice;
-    
-    try {
-        const response = await fetch(`/api/trades/close?tradeId=${tradeId}&closingPrice=${closingPrice}`, {
-            method: 'POST',
-            credentials: 'include'
-        });
         
-        if (response.ok) {
-            const closedTrade = await response.json();
-            const profit = closedTrade.realizedProfit || 0;
-            const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
+        async function closeTrade(tradeId) {
+            const trade = openTrades.find(t => t.id === tradeId);
+            if (!trade) return;
             
-            showNotification(`Trade closed with ${profitText} profit`, profit >= 0 ? 'success' : 'error');
+            const prices = currentPrices[trade.symbol.id] || trade.symbol;
+            const closingPrice = (trade.type === 'BUY') ? prices.bidPrice : prices.askPrice;
             
-            // Trades and account will be updated via WebSocket
-            // But also refresh immediately for better UX
-            setTimeout(() => {
-                loadOpenTrades();
-                loadTradeHistory();
-            }, 500);
+            if (!closingPrice) {
+                alert('Price not available for closing');
+                return;
+            }
             
-        } else {
-            const error = await response.text();
-            showNotification('Failed to close trade: ' + error, 'error');
+            try {
+                const response = await fetch(`/api/trades/close?tradeId=${tradeId}&closingPrice=${closingPrice}`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    await loadOpenTrades();
+                    await loadTradeHistory();
+                    // Account will be updated via WebSocket
+                } else {
+                    const error = await response.text();
+                    alert('Failed to close trade: ' + error);
+                }
+            } catch (error) {
+                console.error('Error closing trade:', error);
+                alert('Failed to close trade: ' + error.message);
+            }
         }
-    } catch (error) {
-        console.error('Error closing trade:', error);
-        showNotification('Failed to close trade: ' + error.message, 'error');
-    }
-}
-
-function selectSymbolById(symbolId) {
-    const symbol = watchlist.find(item => item.symbol.id === symbolId);
-    if (symbol) {
-        selectSymbol(symbol.symbol);
-    }
-}
-let connectionCheckInterval;
-
-function startConnectionMonitoring() {
-    connectionCheckInterval = setInterval(() => {
-        if (stompClient && !stompClient.connected) {
-            console.log('WebSocket disconnected, attempting to reconnect...');
-            connectWebSocket();
-        }
-    }, 10000); // Check every 10 seconds
-}
-
-function stopConnectionMonitoring() {
-    if (connectionCheckInterval) {
-        clearInterval(connectionCheckInterval);
-    }
-}
-
-
-
-        // Load open trades
+        
         async function loadOpenTrades() {
             try {
                 const response = await fetch('/api/trades/open', { credentials: 'include' });
-                if (response.ok) {
-                    openTrades = await response.json();
-                    renderOpenTrades();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
+                openTrades = await response.json();
+                renderOpenTrades();
             } catch (error) {
                 console.error('Error loading open trades:', error);
+                openTrades = [];
+                renderOpenTrades();
             }
         }
-
-        // Render open trades table
+        
         function renderOpenTrades() {
             const tbody = document.getElementById('openTradesBody');
             tbody.innerHTML = '';
             
             if (openTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No open trades</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #aaa;">No open trades</td></tr>';
                 return;
             }
             
             openTrades.forEach(trade => {
                 const row = document.createElement('tr');
-                const currentPrice = currentPrices[trade.symbol.id];
-                const marketPrice = trade.type === 'BUY' ? 
-                    (currentPrice ? currentPrice.bidPrice : trade.symbol.bidPrice) :
-                    (currentPrice ? currentPrice.askPrice : trade.symbol.askPrice);
-                
-                const profit = calculateProfit(trade, marketPrice);
+                const prices = currentPrices[trade.symbol.id] || trade.symbol;
+                const currentPrice = trade.type === 'BUY' ? prices.bidPrice : prices.askPrice;
+                const profit = calculateProfit(trade, currentPrice);
                 
                 row.innerHTML = `
                     <td>${trade.symbol.name}</td>
-                    <td style="color: ${trade.type === 'BUY' ? '#4caf50' : '#ff6b6b'}">${trade.type}</td>
+                    <td>${trade.type}</td>
                     <td>${trade.size}</td>
                     <td>${trade.openingPrice.toFixed(5)}</td>
-                    <td>${marketPrice ? marketPrice.toFixed(5) : '-'}</td>
+                    <td>${currentPrice ? currentPrice.toFixed(5) : '-'}</td>
                     <td class="${profit >= 0 ? 'profit-positive' : 'profit-negative'}">$${profit.toFixed(2)}</td>
                     <td><button class="close-btn" onclick="closeTrade(${trade.id})">Close</button></td>
                 `;
                 tbody.appendChild(row);
             });
         }
-
-        // Load trade history
+        
         async function loadTradeHistory() {
             try {
                 const response = await fetch('/api/trades/history', { credentials: 'include' });
-                if (response.ok) {
-                    tradeHistory = await response.json();
-                    renderTradeHistory();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
+                tradeHistory = await response.json();
+                renderTradeHistory();
             } catch (error) {
                 console.error('Error loading trade history:', error);
+                tradeHistory = [];
+                renderTradeHistory();
             }
         }
-
-        // Render trade history table
+        
         function renderTradeHistory() {
             const tbody = document.getElementById('tradeHistoryBody');
             tbody.innerHTML = '';
             
-            const recentTrades = tradeHistory.slice(0, 10);
-            if (recentTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No trade history</td></tr>';
+            if (tradeHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #aaa;">No trade history</td></tr>';
                 return;
             }
             
-            recentTrades.forEach(trade => {
+            tradeHistory.slice(0, 10).forEach(trade => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${trade.symbol.name}</td>
-                    <td style="color: ${trade.type === 'BUY' ? '#4caf50' : '#ff6b6b'}">${trade.type}</td>
+                    <td>${trade.type}</td>
                     <td>${trade.size}</td>
                     <td>${trade.openingPrice.toFixed(5)}</td>
                     <td>${trade.closingPrice ? trade.closingPrice.toFixed(5) : '-'}</td>
@@ -1186,8 +910,7 @@ function stopConnectionMonitoring() {
                 tbody.appendChild(row);
             });
         }
-
-        // Calculate profit for open trade
+        
         function calculateProfit(trade, currentPrice) {
             if (!currentPrice) return 0;
             if (trade.type === 'BUY') {
@@ -1196,256 +919,180 @@ function stopConnectionMonitoring() {
                 return (trade.openingPrice - currentPrice) * trade.size;
             }
         }
-
-        function handleAdminMessage(adminMessage) {
-    console.log('Admin message received:', adminMessage);
-    
-    switch(adminMessage.type) {
-        case 'EMERGENCY_STOP':
-            showNotification(adminMessage.message, 'error');
-            // Disable trading buttons
-            disableTrading();
-            break;
-            
-        case 'TRADING_RESUMED':
-            showNotification(adminMessage.message, 'success');
-            // Re-enable trading buttons
-            enableTrading();
-            break;
-            
-        case 'ADMIN_BROADCAST':
-            showNotification(adminMessage.message, adminMessage.messageType || 'info');
-            break;
-            
-        default:
-            if (adminMessage.message) {
-                showNotification(adminMessage.message, 'info');
-            }
-    }
-}
-
-function handleGroupUpdate(groupUpdate) {
-    console.log('Group update received:', groupUpdate);
-    
-    // Check if current user is affected
-    if (currentUser && groupUpdate.affectedUsers && 
-        groupUpdate.affectedUsers.includes(currentUser.username)) {
         
-        switch(groupUpdate.type) {
-            case 'GROUP_CHANGED':
-                showNotification('Your trading group has been updated', 'info');
-                refreshUserData();
-                break;
+        // FIXED WebSocket Implementation
+        function connectWebSocket() {
+            console.log('Connecting to WebSocket...');
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            
+            stompClient.connect({}, function(frame) {
+                console.log('Connected: ' + frame);
+                reconnectAttempts = 0;
                 
-            case 'SYMBOL_ACCESS_CHANGED':
-                showNotification('Your symbol access has been updated', 'info');
-                loadWatchlist();
-                break;
+                // Subscribe to price updates
+                stompClient.subscribe('/user/queue/prices', function(message) {
+                    console.log('Price update received:', message.body);
+                    handlePriceUpdate(JSON.parse(message.body));
+                });
+                
+                // Subscribe to account updates
+                stompClient.subscribe('/user/queue/account', function(message) {
+                    console.log('Account update received:', message.body);
+                    const accountData = JSON.parse(message.body);
+                    currentUser.balance = accountData.balance;
+                    currentUser.equity = accountData.equity;
+                    currentUser.marginUsed = accountData.marginUsed;
+                    currentUser.freeMargin = accountData.freeMargin;
+                    updateAccountDisplay();
+                });
+                
+                // Subscribe to admin messages for group changes
+                stompClient.subscribe('/user/queue/notifications', function(message) {
+                    console.log('Notification received:', message.body);
+                    const notification = JSON.parse(message.body);
+                    showNotification(notification.message, notification.type);
+                    
+                    // Refresh watchlist if group access changed
+                    if (notification.type === 'GROUP_CHANGED' || notification.type === 'SYMBOL_ACCESS_CHANGED') {
+                        loadWatchlist();
+                    }
+                });
+                
+                // Request initial price data
+                if (currentUser) {
+                    stompClient.send("/app/subscribe", {}, JSON.stringify({
+                        username: currentUser.username
+                    }));
+                }
+            }, function(error) {
+                console.error('WebSocket connection failed:', error);
+                handleWebSocketError();
+            });
         }
-    }
-}
-
-
-
-        // Show notification
-        function showNotification(message, type = 'info', duration = 5000) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        border-radius: 5px;
-        color: white;
-        z-index: 10000;
-        max-width: 300px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        opacity: 0;
-        transform: translateX(100%);
-        transition: all 0.3s ease-in-out;
-    `;
-    
-    // Set background color based on type
-    switch(type) {
-        case 'success':
-            notification.style.backgroundColor = '#4caf50';
-            break;
-        case 'error':
-            notification.style.backgroundColor = '#f44336';
-            break;
-        case 'warning':
-            notification.style.backgroundColor = '#ff9800';
-            break;
-        default:
-            notification.style.backgroundColor = '#2196F3';
-    }
-    
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    // Animate in
-    setTimeout(() => {
-        notification.style.opacity = '1';
-        notification.style.transform = 'translateX(0)';
-    }, 100);
-    
-    // Auto remove
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
+        
+        // FIXED - Now properly defined
+        function handlePriceUpdate(priceData) {
+            if (Array.isArray(priceData)) {
+                // Multiple price updates
+                priceData.forEach(price => {
+                    currentPrices[price.symbolId] = price;
+                });
+            } else {
+                // Single price update
+                currentPrices[priceData.symbolId] = priceData;
             }
-        }, 300);
-    }, duration);
-}
-
-function flashPriceUpdate(symbolId) {
-    if (!symbolId) return;
-    
-    const elements = document.querySelectorAll(
-        `#symbol-${symbolId} .bid-price, #symbol-${symbolId} .ask-price, 
-         #bidPrice, #askPrice`
-    );
-    
-    elements.forEach(element => {
-        element.style.transition = 'background-color 0.3s ease';
-        element.style.backgroundColor = '#ffeb3b';
+            updatePriceDisplays();
+        }
         
-        setTimeout(() => {
-            element.style.backgroundColor = 'transparent';
-        }, 300);
-    });
-}
-
-function flashAccountUpdate() {
-    const accountElements = document.querySelectorAll(
-        '#accountBalance, #accountEquity, #accountMargin, #accountFreeMargin'
-    );
-    
-    accountElements.forEach(element => {
-        element.style.transition = 'color 0.3s ease';
-        element.style.color = '#4caf50';
+        // FIXED - Now properly defined
+        function updatePriceDisplays() {
+            // Update watchlist
+            renderWatchlist();
+            
+            // Update selected symbol display
+            if (selectedSymbol && currentPrices[selectedSymbol.id]) {
+                const prices = currentPrices[selectedSymbol.id];
+                document.getElementById('bidPrice').textContent = prices.bidPrice.toFixed(5);
+                document.getElementById('askPrice').textContent = prices.askPrice.toFixed(5);
+            }
+            
+            // Update open trades with current prices
+            renderOpenTrades();
+        }
         
-        setTimeout(() => {
-            element.style.color = '';
-        }, 1000);
-    });
-}
-
-async function refreshUserData() {
-    try {
-        // Refresh current user info
-        const response = await fetch('/api/accounts/current', {
-            credentials: 'include'
+        function handleWebSocketError() {
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                setTimeout(() => {
+                    connectWebSocket();
+                }, 2000 * reconnectAttempts);
+            } else {
+                console.error('Max reconnection attempts reached');
+                showNotification('Connection lost. Please refresh the page.', 'error');
+            }
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px;
+                border-radius: 5px;
+                color: white;
+                z-index: 1000;
+                background-color: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#007bff'};
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 5000);
+        }
+        
+        async function logout() {
+            try {
+                await fetch('/api/accounts/logout', { method: 'POST', credentials: 'include' });
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+            
+            if (stompClient && stompClient.connected) {
+                stompClient.disconnect();
+            }
+            
+            currentUser = null;
+            stompClient = null;
+            reconnectAttempts = 0;
+            
+            document.getElementById('loginScreen').style.display = 'block';
+            document.getElementById('tradingScreen').style.display = 'none';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('loginError').innerHTML = '';
+        }
+        
+        // Page visibility handling to maintain WebSocket connection
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                console.log('Page hidden, maintaining WebSocket connection');
+            } else {
+                console.log('Page visible, checking WebSocket connection');
+                if (currentUser && (!stompClient || !stompClient.connected)) {
+                    connectWebSocket();
+                }
+            }
         });
         
-        if (response.ok) {
-            const userData = await response.json();
-            currentUser = userData;
-            updateAccountDisplay();
-            
-            // Refresh watchlist with new permissions
-            await loadWatchlist();
-            
-            // Refresh open trades
-            await loadOpenTrades();
-        }
-    } catch (error) {
-        console.error('Error refreshing user data:', error);
-    }
-}
-
-function disableTrading() {
-    const tradingButtons = document.querySelectorAll('.trade-btn, .close-btn');
-    tradingButtons.forEach(button => {
-        button.disabled = true;
-        button.style.opacity = '0.5';
-    });
-    
-    // Add emergency notice
-    const tradingPanel = document.querySelector('.trading-panel');
-    if (tradingPanel && !document.getElementById('emergency-notice')) {
-        const notice = document.createElement('div');
-        notice.id = 'emergency-notice';
-        notice.style.cssText = `
-            background: #f44336;
-            color: white;
-            padding: 10px;
-            text-align: center;
-            font-weight: bold;
-        `;
-        notice.textContent = 'TRADING SUSPENDED';
-        tradingPanel.appendChild(notice);
-    }
-}
-
-function enableTrading() {
-    const tradingButtons = document.querySelectorAll('.trade-btn, .close-btn');
-    tradingButtons.forEach(button => {
-        button.disabled = false;
-        button.style.opacity = '1';
-    });
-    
-    // Remove emergency notice
-    const notice = document.getElementById('emergency-notice');
-    if (notice) {
-        notice.remove();
-    }
-}
-
-
-
-
-async function logout() {
-    try {
-        await fetch('/api/accounts/logout', { 
-            method: 'POST', 
-            credentials: 'include' 
-        });
-    } catch (error) {
-        console.error('Logout error:', error);
-    }
-    
-    // Cleanup WebSocket
-    if (stompClient) { 
-        stompClient.disconnect(); 
-    }
-    
-    stopConnectionMonitoring();
-    
-    // Reset state
-    currentUser = null;
-    currentPrices = {};
-    selectedSymbol = null;
-    
-    // Show login screen
-    document.getElementById('loginScreen').style.display = 'block';
-    document.getElementById('tradingScreen').style.display = 'none';
-    document.getElementById('username').value = '';
-    document.getElementById('password').value = '';
-    document.getElementById('loginError').innerHTML = '';
-}
-
-
-document.addEventListener('visibilitychange', function() {
-    if (document.hidden) {
-        // Page is hidden, reduce WebSocket activity
-        console.log('Page hidden, maintaining WebSocket connection');
-    } else {
-        // Page is visible, ensure WebSocket is connected
-        console.log('Page visible, checking WebSocket connection');
-        if (currentUser && (!stompClient || !stompClient.connected)) {
-            connectWebSocket();
-        }
-    }
-});
-
-        // Initialize when page loads
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Page loaded - ready for login');
+            console.log('Page loaded, checking authentication...');
+            // Check if user is already logged in
+            fetch('/api/accounts/current', { credentials: 'include' })
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    }
+                    throw new Error('Not authenticated');
+                })
+                .then(user => {
+                    currentUser = user;
+                    document.getElementById('loggedInUser').textContent = currentUser.username;
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('tradingScreen').style.display = 'block';
+                    initializeTradingInterface();
+                })
+                .catch(() => {
+                    console.log('User not logged in, showing login screen');
+                });
         });
     </script>
 </body>

@@ -21,4 +21,10 @@ public interface GroupSymbolRepository extends JpaRepository<GroupSymbol, Long> 
     List<Symbol> findSymbolsByGroupAndCanTradeTrue(@Param("group") Group group);
     
     void deleteByGroupAndSymbol(Group group, Symbol symbol);
+    List<GroupSymbol> findByGroupId(Long id);
+    @Query("SELECT gs FROM GroupSymbol gs WHERE gs.group.id = :groupId AND gs.symbol.id = :symbolId")
+    Optional<GroupSymbol> findByGroupIdAndSymbolId(@Param("groupId") Long groupId, @Param("symbolId") Long symbolId);
+    long countByGroupId(Long groupId);
+    
+    
 }

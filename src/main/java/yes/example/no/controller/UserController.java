@@ -78,6 +78,7 @@ public class UserController {
         }
     }
 
+
     // Get user's tradeable symbols (symbols they can trade)
     @GetMapping("/tradeable-symbols")
     public ResponseEntity<?> getTradeableSymbols(HttpSession session) {
