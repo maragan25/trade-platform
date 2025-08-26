@@ -51,7 +51,7 @@
 
         .main-container {
             display: grid;
-            grid-template-columns: 350px 1fr;
+            grid-template-columns: 300px 1fr;
             height: calc(100vh - 60px);
         }
 
@@ -68,120 +68,46 @@
 
         .sidebar-title {
             font-weight: bold;
-            margin-bottom: 15px;
-            color: #aaa;
-            font-size: 14px;
-            text-transform: uppercase;
-        }
-
-        .symbol-item {
-            background: #1e1e1e;
-            border: 1px solid #444;
-            border-radius: 8px;
-            padding: 15px;
             margin-bottom: 10px;
-            cursor: pointer;
-            transition: all 0.2s;
+            color: #aaa;
+            font-size: 12px;
         }
 
-        .symbol-item:hover {
-            border-color: #4caf50;
-            background: #252525;
-        }
-
-        .symbol-item.selected {
-            border-color: #4caf50;
-            background: #4caf5010;
-        }
-
-        .symbol-header {
+        .watchlist-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-bottom: 5px;
+            transition: background 0.2s;
+        }
+
+        .watchlist-item:hover {
+            background: #2d2d2d;
+        }
+
+        .watchlist-item.selected {
+            background: #4caf50;
         }
 
         .symbol-name {
             font-weight: bold;
-            font-size: 16px;
-            color: #fff;
-        }
-
-        .symbol-timestamp {
-            font-size: 10px;
-            color: #888;
+            font-size: 14px;
         }
 
         .symbol-prices {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-
-        .price-group {
-            text-align: center;
-            flex: 1;
-        }
-
-        .price-label {
-            font-size: 10px;
-            color: #aaa;
-            margin-bottom: 2px;
+            font-size: 11px;
+            text-align: right;
         }
 
         .bid-price {
             color: #ff6b6b;
-            font-weight: bold;
-            font-size: 14px;
         }
 
         .ask-price {
             color: #4caf50;
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        .trading-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-buy, .btn-sell {
-            flex: 1;
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background-color 0.2s;
-        }
-
-        .btn-buy {
-            background: #4caf50;
-            color: white;
-        }
-
-        .btn-buy:hover {
-            background: #45a049;
-        }
-
-        .btn-sell {
-            background: #ff6b6b;
-            color: white;
-        }
-
-        .btn-sell:hover {
-            background: #ff5252;
-        }
-
-        .price-updated {
-            animation: flash 0.8s ease-in-out;
-        }
-
-        @keyframes flash {
-            0%, 100% { background-color: transparent; }
-            50% { background-color: #ffeb3b; }
         }
 
         .main-content {
@@ -192,83 +118,65 @@
 
         .trading-panel {
             background: #252525;
-            padding: 20px;
+            padding: 15px;
             border-bottom: 1px solid #444;
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 15px;
+            align-items: center;
         }
 
-        .selected-symbol {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .selected-symbol h2 {
-            font-size: 24px;
-            color: #4caf50;
-            margin-bottom: 10px;
-        }
-
-        .large-prices {
-            display: flex;
-            justify-content: center;
-            gap: 40px;
-            margin-bottom: 20px;
-        }
-
-        .large-price-box {
-            text-align: center;
-            padding: 20px;
-            border-radius: 8px;
-            min-width: 120px;
-        }
-
-        .large-bid-box {
-            background: #ff6b6b20;
-            border: 2px solid #ff6b6b;
-        }
-
-        .large-ask-box {
-            background: #4caf5020;
-            border: 2px solid #4caf50;
-        }
-
-        .large-price-label {
-            font-size: 14px;
-            margin-bottom: 10px;
-            color: #aaa;
-        }
-
-        .large-price-value {
-            font-size: 28px;
+        .symbol-display {
+            font-size: 18px;
             font-weight: bold;
         }
 
-        .trade-form {
+        .price-display {
             display: flex;
-            justify-content: center;
+            gap: 20px;
             align-items: center;
-            gap: 15px;
+        }
+
+        .price-box {
+            text-align: center;
+            padding: 10px 15px;
+            border-radius: 5px;
+            min-width: 80px;
+        }
+
+        .bid-box {
+            background: #ff6b6b20;
+            border: 1px solid #ff6b6b;
+        }
+
+        .ask-box {
+            background: #4caf5020;
+            border: 1px solid #4caf50;
+        }
+
+        .trade-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
 
         .volume-input {
-            width: 100px;
-            padding: 12px;
+            width: 80px;
+            padding: 8px;
             border: 1px solid #444;
             background: #1e1e1e;
             color: white;
-            border-radius: 6px;
+            border-radius: 3px;
             text-align: center;
-            font-size: 16px;
         }
 
         .trade-btn {
-            padding: 12px 25px;
+            padding: 10px 20px;
             border: none;
-            border-radius: 6px;
+            border-radius: 5px;
             font-weight: bold;
             cursor: pointer;
-            font-size: 16px;
-            min-width: 80px;
-            transition: background-color 0.2s;
+            min-width: 70px;
         }
 
         .buy-btn {
@@ -276,35 +184,21 @@
             color: white;
         }
 
-        .buy-btn:hover:not(:disabled) {
-            background: #45a049;
-        }
-
         .sell-btn {
             background: #ff6b6b;
             color: white;
         }
 
-        .sell-btn:hover:not(:disabled) {
-            background: #ff5252;
-        }
-
-        .trade-btn:disabled {
-            background: #555;
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-
         .trades-section {
-            padding: 20px;
+            padding: 15px;
             overflow-y: auto;
         }
 
         .section-title {
             font-weight: bold;
             margin-bottom: 15px;
-            color: #4caf50;
-            font-size: 16px;
+            color: #aaa;
+            font-size: 14px;
             border-bottom: 1px solid #333;
             padding-bottom: 10px;
         }
@@ -312,21 +206,20 @@
         .trades-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .trades-table th,
         .trades-table td {
-            padding: 10px 8px;
+            padding: 8px;
             text-align: left;
             border-bottom: 1px solid #333;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .trades-table th {
             background: #2d2d2d;
-            color: #4caf50;
-            font-weight: bold;
+            color: #aaa;
         }
 
         .trades-table tr:hover {
@@ -335,56 +228,44 @@
 
         .profit-positive {
             color: #4caf50;
-            font-weight: bold;
         }
 
         .profit-negative {
             color: #ff6b6b;
-            font-weight: bold;
         }
 
         .close-btn {
             background: #ff9800;
             color: white;
             border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
+            padding: 4px 8px;
+            border-radius: 3px;
             cursor: pointer;
-            font-size: 11px;
-            font-weight: bold;
-        }
-
-        .close-btn:hover {
-            background: #f57c00;
+            font-size: 10px;
         }
 
         .account-summary {
             background: #252525;
-            padding: 20px;
+            padding: 15px;
             border-top: 1px solid #444;
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 20px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
         }
 
         .account-item {
             text-align: center;
-            padding: 10px;
-            background: #1e1e1e;
-            border-radius: 8px;
         }
 
         .account-label {
             color: #aaa;
-            font-size: 12px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
+            font-size: 11px;
+            margin-bottom: 5px;
         }
 
         .account-value {
-            font-size: 18px;
+            font-size: 14px;
             font-weight: bold;
-            color: #4caf50;
         }
 
         .login-container {
@@ -392,61 +273,49 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+            background: #1e1e1e;
         }
 
         .login-form {
-            background: #252525;
-            padding: 40px;
-            border-radius: 12px;
-            width: 350px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            border: 1px solid #444;
+            background: #2d2d2d;
+            padding: 30px;
+            border-radius: 10px;
+            width: 300px;
         }
 
         .login-form h2 {
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             text-align: center;
             color: #4caf50;
-            font-size: 24px;
         }
 
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 20px;
+            gap: 5px;
+            margin-bottom: 15px;
         }
 
         .form-group label {
             color: #aaa;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: 12px;
         }
 
         .form-group input {
-            padding: 12px;
+            padding: 10px;
             border: 1px solid #444;
             background: #1e1e1e;
             color: white;
-            border-radius: 6px;
-            font-size: 16px;
-            transition: border-color 0.2s;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #4caf50;
+            border-radius: 4px;
         }
 
         .btn {
-            padding: 12px 20px;
+            padding: 10px 15px;
             border: none;
-            border-radius: 6px;
+            border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
             transition: background 0.2s;
-            font-size: 16px;
         }
 
         .btn-primary {
@@ -461,54 +330,10 @@
         .error-message {
             background: #f44336;
             color: white;
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-size: 14px;
-            text-align: center;
-        }
-
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 25px;
-            border-radius: 8px;
-            color: white;
-            z-index: 1000;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            max-width: 400px;
-            animation: slideIn 0.3s ease-out;
-        }
-
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        .notification.success { background: linear-gradient(135deg, #4caf50, #45a049); }
-        .notification.error { background: linear-gradient(135deg, #f44336, #d32f2f); }
-        .notification.info { background: linear-gradient(135deg, #2196F3, #1976D2); }
-        .notification.warning { background: linear-gradient(135deg, #ff9800, #f57c00); }
-
-        .empty-state {
-            text-align: center;
-            color: #666;
-            padding: 40px 20px;
-            font-style: italic;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #4caf50;
-        }
-
-        .no-symbols {
-            text-align: center;
-            padding: 30px;
-            color: #666;
-            font-style: italic;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -519,11 +344,11 @@
             <h2>Trading Platform</h2>
             <div class="form-group">
                 <label>Username:</label>
-                <input type="text" id="username" required autocomplete="username">
+                <input type="text" id="username" required>
             </div>
             <div class="form-group">
                 <label>Password:</label>
-                <input type="password" id="password" required autocomplete="current-password">
+                <input type="password" id="password" required>
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
             <div id="loginError"></div>
@@ -535,99 +360,83 @@
         <div class="header">
             <h1>Trading Platform</h1>
             <div>
-                Welcome <span id="loggedInUser" class="user-info"></span>
+                Logged in as <span id="loggedInUser" class="user-info"></span>
                 <button class="logout-btn" onclick="logout()">Logout</button>
             </div>
         </div>
-        
         <div class="main-container">
             <div class="sidebar">
                 <div class="sidebar-section">
-                    <div class="sidebar-title">Available Symbols</div>
-                    <div id="symbolContainer">
-                        <div class="loading">Loading symbols...</div>
-                    </div>
+                    <div class="sidebar-title">My Watchlist</div>
+                    <div id="watchlistContainer"></div>
                 </div>
             </div>
-            
             <div class="main-content">
                 <div class="trading-panel">
-                    <div class="selected-symbol">
-                        <h2 id="selectedSymbolName">Select a symbol to trade</h2>
-                        <div id="selectedSymbolPrices" style="display:none;">
-                            <div class="large-prices">
-                                <div class="large-price-box large-bid-box">
-                                    <div class="large-price-label">BID</div>
-                                    <div class="large-price-value" id="selectedBidPrice">-</div>
-                                </div>
-                                <div class="large-price-box large-ask-box">
-                                    <div class="large-price-label">ASK</div>
-                                    <div class="large-price-value" id="selectedAskPrice">-</div>
-                                </div>
-                            </div>
-                            <div class="trade-form">
-                                <input type="number" id="tradeVolume" class="volume-input" placeholder="Volume" value="1.0" step="0.01" min="0.01">
-                                <button class="trade-btn buy-btn" id="buyBtn" onclick="openTrade('BUY')" disabled>BUY</button>
-                                <button class="trade-btn sell-btn" id="sellBtn" onclick="openTrade('SELL')" disabled>SELL</button>
-                            </div>
+                    <div class="symbol-display" id="selectedSymbol">Select a symbol</div>
+                    <div class="price-display">
+                        <div class="price-box bid-box">
+                            <div>Bid</div>
+                            <div id="bidPrice">-</div>
+                        </div>
+                        <div class="price-box ask-box">
+                            <div>Ask</div>
+                            <div id="askPrice">-</div>
                         </div>
                     </div>
+                    <div class="trade-controls">
+                        <input type="number" id="tradeVolume" class="volume-input" placeholder="Volume">
+                        <button class="trade-btn buy-btn" id="buyBtn" onclick="openTrade('BUY')" disabled>BUY</button>
+                        <button class="trade-btn sell-btn" id="sellBtn" onclick="openTrade('SELL')" disabled>SELL</button>
+                    </div>
                 </div>
-                
                 <div class="trades-section">
                     <div class="section-title">Open Trades</div>
                     <table class="trades-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th><th>Type</th><th>Volume</th><th>Open Price</th><th>Current Price</th><th>Profit/Loss</th><th>Action</th>
+                                <th>Symbol</th><th>Type</th><th>Volume</th><th>Open Price</th><th>Current Price</th><th>Profit</th><th>Action</th>
                             </tr>
                         </thead>
-                        <tbody id="openTradesBody">
-                            <tr><td colspan="7" class="empty-state">No open trades</td></tr>
-                        </tbody>
+                        <tbody id="openTradesBody"></tbody>
                     </table>
-                    
-                    <div class="section-title">Recent Trade History</div>
+                    <div class="section-title">Trade History (Last 10)</div>
                     <table class="trades-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th><th>Type</th><th>Volume</th><th>Open Price</th><th>Close Price</th><th>Profit/Loss</th><th>Close Time</th>
+                                <th>Symbol</th><th>Type</th><th>Volume</th><th>Open Price</th><th>Close Price</th><th>Profit</th><th>Close Time</th>
                             </tr>
                         </thead>
-                        <tbody id="tradeHistoryBody">
-                            <tr><td colspan="7" class="empty-state">No trade history</td></tr>
-                        </tbody>
+                        <tbody id="tradeHistoryBody"></tbody>
                     </table>
                 </div>
-                
                 <div class="account-summary">
                     <div class="account-item">
                         <div class="account-label">Balance</div>
-                        <div class="account-value" id="accountBalance">$0.00</div>
+                        <div id="accountBalance">$0.00</div>
                     </div>
                     <div class="account-item">
                         <div class="account-label">Equity</div>
-                        <div class="account-value" id="accountEquity">$0.00</div>
+                        <div id="accountEquity">$0.00</div>
                     </div>
                     <div class="account-item">
-                        <div class="account-label">Margin Used</div>
-                        <div class="account-value" id="accountMargin">$0.00</div>
+                        <div class="account-label">Margin</div>
+                        <div id="accountMargin">$0.00</div>
                     </div>
                     <div class="account-item">
                         <div class="account-label">Free Margin</div>
-                        <div class="account-value" id="accountFreeMargin">$0.00</div>
+                        <div id="accountFreeMargin">$0.00</div>
                     </div>
                     <div class="account-item">
-                        <div class="account-label">Trading Group</div>
-                        <div class="account-value" id="userGroup">None</div>
+                        <div class="account-label">Group</div>
+                        <div id="userGroup">None</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>// Replace the entire <script> section in your index.html with this
-
+    <script>
         let currentUser = null;
         let stompClient = null;
         let watchlist = [];
@@ -635,14 +444,11 @@
         let tradeHistory = [];
         let selectedSymbol = null;
         let currentPrices = {};
-        let reconnectAttempts = 0;
-        let maxReconnectAttempts = 5;
-        
+
         async function login(event) {
             event.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            
             try {
                 const response = await fetch('/api/accounts/login', {
                     method: 'POST',
@@ -650,7 +456,6 @@
                     credentials: 'include',
                     body: JSON.stringify({ username, password })
                 });
-                
                 if (response.ok) {
                     const data = await response.json();
                     currentUser = data.account;
@@ -663,14 +468,14 @@
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showLoginError('Login failed: ' + error.message);
+                showLoginError('Login failed');
             }
         }
-        
+
         function showLoginError(message) {
             document.getElementById('loginError').innerHTML = `<div class="error-message">${message}</div>`;
         }
-        
+
         async function initializeTradingInterface() {
             updateAccountDisplay();
             await loadWatchlist();
@@ -678,44 +483,36 @@
             await loadTradeHistory();
             connectWebSocket();
         }
-        
+
         function updateAccountDisplay() {
-            document.getElementById('accountBalance').textContent = '$' + currentUser.balance.toFixed(2);
-            document.getElementById('accountEquity').textContent = '$' + currentUser.equity.toFixed(2);
-            document.getElementById('accountMargin').textContent = '$' + currentUser.marginUsed.toFixed(2);
-            document.getElementById('accountFreeMargin').textContent = '$' + currentUser.freeMargin.toFixed(2);
+            document.getElementById('accountBalance').textContent = currentUser.balance.toFixed(2);
+            document.getElementById('accountEquity').textContent = currentUser.equity.toFixed(2);
+            document.getElementById('accountMargin').textContent = currentUser.marginUsed.toFixed(2);
+            document.getElementById('accountFreeMargin').textContent = currentUser.freeMargin.toFixed(2);
             document.getElementById('userGroup').textContent = currentUser.group ? currentUser.group.name : 'None';
         }
-        
+
         async function loadWatchlist() {
             try {
                 const response = await fetch('/api/user/watchlist', { credentials: 'include' });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
                 watchlist = await response.json();
                 renderWatchlist();
             } catch (error) {
                 console.error('Error loading watchlist:', error);
-                watchlist = [];
-                renderWatchlist();
             }
         }
-        
+
         function renderWatchlist() {
             const container = document.getElementById('watchlistContainer');
             container.innerHTML = '';
-            
             if (watchlist.length === 0) {
-                container.innerHTML = '<div style="color: #aaa; font-size: 12px;">No symbols available</div>';
+                container.innerHTML = '<div style="color: #aaa; font-size: 12px;">No symbols in watchlist</div>';
                 return;
             }
-            
             watchlist.forEach(item => {
                 const symbolDiv = document.createElement('div');
                 symbolDiv.className = 'watchlist-item';
                 symbolDiv.onclick = () => selectSymbol(item.symbol);
-                
                 const prices = currentPrices[item.symbol.id] || item.symbol;
                 symbolDiv.innerHTML = `
                     <div class="symbol-name">${item.symbol.name}</div>
@@ -727,50 +524,26 @@
                 container.appendChild(symbolDiv);
             });
         }
-        
+
         function selectSymbol(symbol) {
             selectedSymbol = symbol;
             document.getElementById('selectedSymbol').textContent = symbol.name;
-            
             const prices = currentPrices[symbol.id] || symbol;
             document.getElementById('bidPrice').textContent = prices.bidPrice ? prices.bidPrice.toFixed(5) : '-';
             document.getElementById('askPrice').textContent = prices.askPrice ? prices.askPrice.toFixed(5) : '-';
-            
             document.getElementById('buyBtn').disabled = false;
             document.getElementById('sellBtn').disabled = false;
-            
-            // Update selected state
             document.querySelectorAll('.watchlist-item').forEach(item => item.classList.remove('selected'));
             event.target.closest('.watchlist-item').classList.add('selected');
         }
-        
+
         async function openTrade(type) {
-            if (!selectedSymbol) {
-                alert('Please select a symbol first');
-                return;
-            }
-            
+            if (!selectedSymbol) { alert('Please select a symbol first'); return; }
             const volume = parseFloat(document.getElementById('tradeVolume').value);
-            if (!volume || volume <= 0) {
-                alert('Please enter a valid volume');
-                return;
-            }
-            
+            if (volume <= 0) { alert('Please enter a valid volume'); return; }
             const prices = currentPrices[selectedSymbol.id] || selectedSymbol;
             const openingPrice = (type === 'BUY') ? prices.askPrice : prices.bidPrice;
-            
-            if (!openingPrice) {
-                alert('Price not available');
-                return;
-            }
-            
-            const tradeRequest = {
-                symbolId: selectedSymbol.id,
-                type: type,
-                size: volume,
-                openingPrice: openingPrice
-            };
-            
+            const tradeRequest = { symbolId: selectedSymbol.id, type: type, size: volume, openingPrice: openingPrice };
             try {
                 const response = await fetch('/api/trades/open', {
                     method: 'POST',
@@ -778,11 +551,7 @@
                     credentials: 'include',
                     body: JSON.stringify(tradeRequest)
                 });
-                
                 if (response.ok) {
-                    const trade = await response.json();
-                    console.log('Trade opened:', trade);
-                    document.getElementById('tradeVolume').value = '';
                     await loadOpenTrades();
                     // Account will be updated via WebSocket
                 } else {
@@ -791,109 +560,77 @@
                 }
             } catch (error) {
                 console.error('Error opening trade:', error);
-                alert('Failed to open trade: ' + error.message);
+                alert('Failed to open trade');
             }
         }
-        
+
         async function closeTrade(tradeId) {
             const trade = openTrades.find(t => t.id === tradeId);
             if (!trade) return;
-            
             const prices = currentPrices[trade.symbol.id] || trade.symbol;
             const closingPrice = (trade.type === 'BUY') ? prices.bidPrice : prices.askPrice;
-            
-            if (!closingPrice) {
-                alert('Price not available for closing');
-                return;
-            }
-            
             try {
                 const response = await fetch(`/api/trades/close?tradeId=${tradeId}&closingPrice=${closingPrice}`, {
                     method: 'POST',
                     credentials: 'include'
                 });
-                
                 if (response.ok) {
                     await loadOpenTrades();
                     await loadTradeHistory();
                     // Account will be updated via WebSocket
                 } else {
-                    const error = await response.text();
-                    alert('Failed to close trade: ' + error);
+                    alert('Failed to close trade');
                 }
             } catch (error) {
                 console.error('Error closing trade:', error);
-                alert('Failed to close trade: ' + error.message);
+                alert('Failed to close trade');
             }
         }
-        
+
         async function loadOpenTrades() {
             try {
                 const response = await fetch('/api/trades/open', { credentials: 'include' });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
                 openTrades = await response.json();
                 renderOpenTrades();
             } catch (error) {
                 console.error('Error loading open trades:', error);
-                openTrades = [];
-                renderOpenTrades();
             }
         }
-        
+
         function renderOpenTrades() {
             const tbody = document.getElementById('openTradesBody');
             tbody.innerHTML = '';
-            
-            if (openTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #aaa;">No open trades</td></tr>';
-                return;
-            }
-            
             openTrades.forEach(trade => {
                 const row = document.createElement('tr');
                 const prices = currentPrices[trade.symbol.id] || trade.symbol;
                 const currentPrice = trade.type === 'BUY' ? prices.bidPrice : prices.askPrice;
                 const profit = calculateProfit(trade, currentPrice);
-                
                 row.innerHTML = `
                     <td>${trade.symbol.name}</td>
                     <td>${trade.type}</td>
                     <td>${trade.size}</td>
                     <td>${trade.openingPrice.toFixed(5)}</td>
                     <td>${currentPrice ? currentPrice.toFixed(5) : '-'}</td>
-                    <td class="${profit >= 0 ? 'profit-positive' : 'profit-negative'}">$${profit.toFixed(2)}</td>
+                    <td class="${profit >= 0 ? 'profit-positive' : 'profit-negative'}">${profit.toFixed(2)}</td>
                     <td><button class="close-btn" onclick="closeTrade(${trade.id})">Close</button></td>
                 `;
                 tbody.appendChild(row);
             });
         }
-        
+
         async function loadTradeHistory() {
             try {
                 const response = await fetch('/api/trades/history', { credentials: 'include' });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
                 tradeHistory = await response.json();
                 renderTradeHistory();
             } catch (error) {
                 console.error('Error loading trade history:', error);
-                tradeHistory = [];
-                renderTradeHistory();
             }
         }
-        
+
         function renderTradeHistory() {
             const tbody = document.getElementById('tradeHistoryBody');
             tbody.innerHTML = '';
-            
-            if (tradeHistory.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #aaa;">No trade history</td></tr>';
-                return;
-            }
-            
             tradeHistory.slice(0, 10).forEach(trade => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -903,14 +640,14 @@
                     <td>${trade.openingPrice.toFixed(5)}</td>
                     <td>${trade.closingPrice ? trade.closingPrice.toFixed(5) : '-'}</td>
                     <td class="${trade.realizedProfit >= 0 ? 'profit-positive' : 'profit-negative'}">
-                        $${trade.realizedProfit ? trade.realizedProfit.toFixed(2) : '0.00'}
+                        ${trade.realizedProfit ? trade.realizedProfit.toFixed(2) : '-'}
                     </td>
                     <td>${trade.closeTime ? new Date(trade.closeTime).toLocaleString() : '-'}</td>
                 `;
                 tbody.appendChild(row);
             });
         }
-        
+
         function calculateProfit(trade, currentPrice) {
             if (!currentPrice) return 0;
             if (trade.type === 'BUY') {
@@ -919,26 +656,24 @@
                 return (trade.openingPrice - currentPrice) * trade.size;
             }
         }
-        
-        // FIXED WebSocket Implementation
+
         function connectWebSocket() {
-            console.log('Connecting to WebSocket...');
             const socket = new SockJS('/ws');
             stompClient = Stomp.over(socket);
-            
             stompClient.connect({}, function(frame) {
                 console.log('Connected: ' + frame);
-                reconnectAttempts = 0;
-                
                 // Subscribe to price updates
                 stompClient.subscribe('/user/queue/prices', function(message) {
-                    console.log('Price update received:', message.body);
-                    handlePriceUpdate(JSON.parse(message.body));
+                    const priceData = JSON.parse(message.body);
+                    if (Array.isArray(priceData)) {
+                        priceData.forEach(price => currentPrices[price.symbolId] = price);
+                    } else {
+                        currentPrices[priceData.symbolId] = priceData;
+                    }
+                    updatePriceDisplays();
                 });
-                
                 // Subscribe to account updates
                 stompClient.subscribe('/user/queue/account', function(message) {
-                    console.log('Account update received:', message.body);
                     const accountData = JSON.parse(message.body);
                     currentUser.balance = accountData.balance;
                     currentUser.equity = accountData.equity;
@@ -946,154 +681,39 @@
                     currentUser.freeMargin = accountData.freeMargin;
                     updateAccountDisplay();
                 });
-                
-                // Subscribe to admin messages for group changes
-                stompClient.subscribe('/user/queue/notifications', function(message) {
-                    console.log('Notification received:', message.body);
-                    const notification = JSON.parse(message.body);
-                    showNotification(notification.message, notification.type);
-                    
-                    // Refresh watchlist if group access changed
-                    if (notification.type === 'GROUP_CHANGED' || notification.type === 'SYMBOL_ACCESS_CHANGED') {
-                        loadWatchlist();
-                    }
-                });
-                
                 // Request initial price data
-                if (currentUser) {
-                    stompClient.send("/app/subscribe", {}, JSON.stringify({
-                        username: currentUser.username
-                    }));
-                }
-            }, function(error) {
-                console.error('WebSocket connection failed:', error);
-                handleWebSocketError();
+                stompClient.send("/app/subscribe", {}, JSON.stringify({ username: currentUser.username }));
             });
         }
-        
-        // FIXED - Now properly defined
-        function handlePriceUpdate(priceData) {
-            if (Array.isArray(priceData)) {
-                // Multiple price updates
-                priceData.forEach(price => {
-                    currentPrices[price.symbolId] = price;
-                });
-            } else {
-                // Single price update
-                currentPrices[priceData.symbolId] = priceData;
-            }
-            updatePriceDisplays();
-        }
-        
-        // FIXED - Now properly defined
+
         function updatePriceDisplays() {
-            // Update watchlist
+            // Update watchlist and selected symbol
             renderWatchlist();
-            
-            // Update selected symbol display
             if (selectedSymbol && currentPrices[selectedSymbol.id]) {
                 const prices = currentPrices[selectedSymbol.id];
                 document.getElementById('bidPrice').textContent = prices.bidPrice.toFixed(5);
                 document.getElementById('askPrice').textContent = prices.askPrice.toFixed(5);
             }
-            
-            // Update open trades with current prices
+            // Update open trades with new prices
             renderOpenTrades();
         }
-        
-        function handleWebSocketError() {
-            if (reconnectAttempts < maxReconnectAttempts) {
-                reconnectAttempts++;
-                console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
-                setTimeout(() => {
-                    connectWebSocket();
-                }, 2000 * reconnectAttempts);
-            } else {
-                console.error('Max reconnection attempts reached');
-                showNotification('Connection lost. Please refresh the page.', 'error');
-            }
-        }
-        
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 15px;
-                border-radius: 5px;
-                color: white;
-                z-index: 1000;
-                background-color: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#007bff'};
-            `;
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 5000);
-        }
-        
+
         async function logout() {
             try {
                 await fetch('/api/accounts/logout', { method: 'POST', credentials: 'include' });
             } catch (error) {
                 console.error('Logout error:', error);
             }
-            
-            if (stompClient && stompClient.connected) {
-                stompClient.disconnect();
-            }
-            
+            if (stompClient) { stompClient.disconnect(); }
             currentUser = null;
-            stompClient = null;
-            reconnectAttempts = 0;
-            
             document.getElementById('loginScreen').style.display = 'block';
             document.getElementById('tradingScreen').style.display = 'none';
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
             document.getElementById('loginError').innerHTML = '';
         }
+
         
-        // Page visibility handling to maintain WebSocket connection
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                console.log('Page hidden, maintaining WebSocket connection');
-            } else {
-                console.log('Page visible, checking WebSocket connection');
-                if (currentUser && (!stompClient || !stompClient.connected)) {
-                    connectWebSocket();
-                }
-            }
-        });
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Page loaded, checking authentication...');
-            // Check if user is already logged in
-            fetch('/api/accounts/current', { credentials: 'include' })
-                .then(response => {
-                    if (response.ok) {
-                        return response.json();
-                    }
-                    throw new Error('Not authenticated');
-                })
-                .then(user => {
-                    currentUser = user;
-                    document.getElementById('loggedInUser').textContent = currentUser.username;
-                    document.getElementById('loginScreen').style.display = 'none';
-                    document.getElementById('tradingScreen').style.display = 'block';
-                    initializeTradingInterface();
-                })
-                .catch(() => {
-                    console.log('User not logged in, showing login screen');
-                });
-        });
     </script>
 </body>
 </html>
