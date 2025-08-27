@@ -126,7 +126,7 @@ public class GroupManagementService {
     }
 
     private void clearAccountWatchlist(Account account) {
-        List<Watchlist> watchlistItems = watchlistRepo.findByAccountOrderBySortOrder(account);
+        List<Watchlist> watchlistItems = watchlistRepo.findByAccountOrderByOrderIndexAsc(account);
         watchlistRepo.deleteAll(watchlistItems);
     }
 

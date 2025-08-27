@@ -38,6 +38,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     // Create authentication for WebSocket
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+                    
                     if (Boolean.TRUE.equals(isAdmin)) {
                         authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
                     }

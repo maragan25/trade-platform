@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import yes.example.no.service.AdminGroupService;
@@ -42,6 +43,127 @@ public class AdminGroupController {
     private WebSocketNotificationService notificationService;
         @Autowired
     private AdminGroupService adminGroupService;
+
+    public List<GroupSymbol> getGroupSymbols(Long groupId) {
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+        return groupSymbolRepo.findByGroup(group);
+    }
+
+    public List<Symbol> getAvailableSymbolsForGroup(Long groupId) {
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+        
+        List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(group);
+        List<Long> assignedSymbolIds = groupSymbols.stream()
+                .map(gs -> gs.getSymbol().getId())
+                .collect(Collectors.toList());
+        
+        List<Symbol> allSymbols = symbolRepo.findByActiveTrue();
+        return allSymbols.stream()
+                .filter(symbol -> !assignedSymbolIds.contains(symbol.getId()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public GroupSymbol updateGroupSymbol(Long groupId, Long groupSymbolId, GroupSymbol updatedGroupSymbol) {
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+        
+        List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(group);
+        GroupSymbol existingGroupSymbol = groupSymbols.stream()
+                .filter(gs -> gs.getId().equals(groupSymbolId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Group symbol not found"));
+        
+        // Update the fields
+        existingGroupSymbol.setCanViewQuotes(updatedGroupSymbol.isCanViewQuotes());
+        existingGroupSymbol.setCanTrade(updatedGroupSymbol.isCanTrade());
+        existingGroupSymbol.setBidMarkup(updatedGroupSymbol.getBidMarkup());
+        existingGroupSymbol.setAskMarkup(updatedGroupSymbol.getAskMarkup());
+        existingGroupSymbol.setBidMarkupPercent(updatedGroupSymbol.getBidMarkupPercent());
+        existingGroupSymbol.setAskMarkupPercent(updatedGroupSymbol.getAskMarkupPercent());
+        
+        GroupSymbol saved = groupSymbolRepo.save(existingGroupSymbol);
+        
+        // Notify group members about the change
+        notificationService.notifyGroupMembersSymbolsChanged(groupId, 
+            "Symbol access permissions have been updated for " + saved.getSymbol().getName());
+        
+        return saved;
+    }
+
+    @Transactional
+    public void removeSymbolFromGroup(Long groupId, Long symbolId) {
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+        Symbol symbol = symbolRepo.findById(symbolId)
+                .orElseThrow(() -> new RuntimeException("Symbol not found"));
+        
+        groupSymbolRepo.deleteByGroupAndSymbol(group, symbol);
+        
+        // Notify group members
+        notificationService.notifyGroupMembersSymbolsChanged(groupId, 
+            "Symbol " + symbol.getName() + " has been removed from your group");
+    }
+
+    @Transactional
+    public GroupSymbol addSymbolToGroup(Long groupId, Long symbolId, GroupSymbol config) {
+        Group group = groupRepo.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+        Symbol symbol = symbolRepo.findById(symbolId)
+                .orElseThrow(() -> new RuntimeException("Symbol not found"));
+        
+        // Check if already exists
+        Optional<GroupSymbol> existing = groupSymbolRepo.findByGroupAndSymbol(group, symbol);
+        if (existing.isPresent()) {
+            throw new RuntimeException("Symbol already assigned to group");
+        }
+        
+        GroupSymbol groupSymbol = new GroupSymbol();
+        groupSymbol.setGroup(group);
+        groupSymbol.setSymbol(symbol);
+        groupSymbol.setCanViewQuotes(config.isCanViewQuotes());
+        groupSymbol.setCanTrade(config.isCanTrade());
+        groupSymbol.setBidMarkup(config.getBidMarkup());
+        groupSymbol.setAskMarkup(config.getAskMarkup());
+        groupSymbol.setBidMarkupPercent(config.getBidMarkupPercent());
+        groupSymbol.setAskMarkupPercent(config.getAskMarkupPercent());
+        
+        GroupSymbol saved = groupSymbolRepo.save(groupSymbol);
+        
+        // Notify group members
+        notificationService.notifyGroupMembersSymbolsChanged(groupId, 
+            "New symbol " + symbol.getName() + " has been added to your group");
+        
+        return saved;
+    }
+
+    public boolean canAccountAccessSymbol(Long accountId, Long symbolId) {
+        Account account = accountRepo.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+        
+        if (account.getGroup() == null) {
+            return false;
+        }
+        
+        List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(account.getGroup());
+        return groupSymbols.stream()
+                .anyMatch(gs -> gs.getSymbol().getId().equals(symbolId) && gs.isCanViewQuotes());
+    }
+
+    public boolean canAccountTradeSymbol(Long accountId, Long symbolId) {
+        Account account = accountRepo.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+        
+        if (account.getGroup() == null) {
+            return false;
+        }
+        
+        List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(account.getGroup());
+        return groupSymbols.stream()
+                .anyMatch(gs -> gs.getSymbol().getId().equals(symbolId) && gs.isCanTrade());
+    }
 
     private void notifyGroupChange(Long groupId, String changeType, String message) {
         Optional<Group> groupOpt = groupRepo.findById(groupId);
@@ -74,35 +196,101 @@ public class AdminGroupController {
     }
 
     @PostMapping("/{groupId}/symbols/bulk")
-    public ResponseEntity<String> addSymbolsToGroupBulk(@PathVariable Long groupId,
-                                                    @RequestBody List<Map<String, Object>> configs,
-                                                    Principal principal,
-                                                    HttpServletRequest request) {
-    adminValidationService.validateAdmin(request);
+    public ResponseEntity<?> addSymbolsToGroupBulk(
+            @PathVariable Long groupId,
+            @RequestBody List<Map<String, Object>> configs,
+            Principal principal,
+            HttpServletRequest request) {
     
-    for (Map<String, Object> config : configs) {
-        GroupSymbol groupSymbol = new GroupSymbol();
-        
-        Symbol symbol = symbolRepo.findById(((Number) config.get("symbolId")).longValue())
-                .orElseThrow(() -> new RuntimeException("Symbol not found"));
-        
-        Group group = groupRepo.findById(groupId)
-                .orElseThrow(() -> new RuntimeException("Group not found"));
-        
-        groupSymbol.setGroup(group);
-        groupSymbol.setSymbol(symbol);
-        groupSymbol.setCanViewQuotes((Boolean) config.getOrDefault("canViewQuotes", true));
-        groupSymbol.setCanTrade((Boolean) config.getOrDefault("canTrade", true));
-        groupSymbol.setBidMarkup(((Number) config.getOrDefault("bidMarkup", 0.0)).doubleValue());
-        groupSymbol.setAskMarkup(((Number) config.getOrDefault("askMarkup", 0.0)).doubleValue());
-        groupSymbol.setBidMarkupPercent(((Number) config.getOrDefault("bidMarkupPercent", 0.0)).doubleValue());
-        groupSymbol.setAskMarkupPercent(((Number) config.getOrDefault("askMarkupPercent", 0.0)).doubleValue());
-        
-        groupSymbolRepo.save(groupSymbol);
+        try {
+            adminValidationService.validateAdmin(request);
+    
+            Group group = groupRepo.findById(groupId)
+                    .orElseThrow(() -> new RuntimeException("Group not found"));
+    
+            List<String> addedSymbols = new ArrayList<>();
+            List<String> skippedSymbols = new ArrayList<>();
+    
+            for (Map<String, Object> config : configs) {
+                try {
+                    Long symbolId = Long.parseLong(config.get("symbolId").toString());
+    
+                    Symbol symbol = symbolRepo.findById(symbolId)
+                            .orElseThrow(() -> new RuntimeException("Symbol with ID " + symbolId + " not found"));
+    
+                    Optional<GroupSymbol> existing = groupSymbolRepo.findByGroupAndSymbol(group, symbol);
+    
+                    if (existing.isPresent()) {
+                        skippedSymbols.add(symbol.getName() + " (already assigned)");
+                        continue; // skip duplicates
+                    }
+    
+                    GroupSymbol groupSymbol = new GroupSymbol();
+                    groupSymbol.setGroup(group);
+                    groupSymbol.setSymbol(symbol);
+    
+                    // Safe Boolean conversion
+                    groupSymbol.setCanViewQuotes(Boolean.parseBoolean(
+                            config.getOrDefault("canViewQuotes", true).toString()
+                    ));
+                    groupSymbol.setCanTrade(Boolean.parseBoolean(
+                            config.getOrDefault("canTrade", true).toString()
+                    ));
+    
+                    // Safe numeric conversion
+                    groupSymbol.setBidMarkup(Double.parseDouble(
+                            config.getOrDefault("bidMarkup", 0.0).toString()
+                    ));
+                    groupSymbol.setAskMarkup(Double.parseDouble(
+                            config.getOrDefault("askMarkup", 0.0).toString()
+                    ));
+                    groupSymbol.setBidMarkupPercent(Double.parseDouble(
+                            config.getOrDefault("bidMarkupPercent", 0.0).toString()
+                    ));
+                    groupSymbol.setAskMarkupPercent(Double.parseDouble(
+                            config.getOrDefault("askMarkupPercent", 0.0).toString()
+                    ));
+    
+                    groupSymbolRepo.save(groupSymbol);
+                    addedSymbols.add(symbol.getName());
+    
+                } catch (Exception innerEx) {
+                    // Skip problematic symbol but log it
+                    innerEx.printStackTrace();
+                    skippedSymbols.add(config.get("symbolId") + " (error: " + innerEx.getMessage() + ")");
+                }
+            }
+    
+            Map<String, Object> response = new HashMap<>();
+            response.put("addedSymbols", addedSymbols);
+            response.put("skippedSymbols", skippedSymbols);
+            response.put("totalAdded", addedSymbols.size());
+            response.put("totalSkipped", skippedSymbols.size());
+    
+            // Notify group members with updated permissions map
+            if (!addedSymbols.isEmpty()) {
+                List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(group);
+
+                List<Map<String, Object>> permissions = groupSymbols.stream()
+                .map(gs -> (Map<String, Object>) (Map<?, ?>) Map.of(
+                    "symbolId", gs.getSymbol().getId(),
+                    "canTrade", gs.isCanTrade(),
+                    "canViewQuotes", gs.isCanViewQuotes()
+                ))
+                .collect(Collectors.toList());
+            
+
+                notificationService.notifyGroupPermissionsUpdate(groupId, permissions);
+            }
+    
+            return ResponseEntity.ok(response);
+    
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Error adding symbols: " + e.getMessage());
+        }
     }
     
-    return ResponseEntity.ok("Symbols added successfully");
-}
 
     @GetMapping
     public ResponseEntity<List<GroupDetailDto>> getAllGroups(HttpServletRequest request) {
@@ -309,9 +497,20 @@ public class AdminGroupController {
     
     GroupSymbol updated = adminGroupService.updateGroupSymbol(groupId, groupSymbolId, groupSymbol);
     
-    // Notify clients of changes
-    notificationService.notifyGroupSymbolChanged(groupId, groupSymbolId);
-    
+        // Notify clients of changes
+    // Rebuild permissions map after update
+    List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(updated.getGroup());
+    List<Map<String, Object>> permissions = groupSymbols.stream()
+            .map(gs -> (Map<String, Object>) (Map<?, ?>) Map.of(
+                "symbolId", gs.getSymbol().getId(),
+                "canTrade", gs.isCanTrade(),
+                "canViewQuotes", gs.isCanViewQuotes()
+            ))
+            .collect(Collectors.toList());
+
+
+    notificationService.notifyGroupPermissionsUpdate(groupId, permissions);
+
     return ResponseEntity.ok(updated);
 }
 

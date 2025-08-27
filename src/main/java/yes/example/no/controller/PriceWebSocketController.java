@@ -151,7 +151,7 @@ public class PriceWebSocketController {
         );
     }
 
-    private void broadcastPriceUpdate(Symbol symbol) {
+    void broadcastPriceUpdate(Symbol symbol) {
         // Get all accounts that can view this symbol
         List<Account> allAccounts = accountRepo.findAll();
         

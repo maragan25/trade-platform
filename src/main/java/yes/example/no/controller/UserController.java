@@ -8,12 +8,18 @@ import jakarta.servlet.http.HttpSession;
 import yes.example.no.entity.Account;
 import yes.example.no.entity.GroupSymbol;
 import yes.example.no.entity.Symbol;
+import yes.example.no.entity.Watchlist;
 import yes.example.no.repository.AccountRepository;
 import yes.example.no.repository.GroupSymbolRepository;
+import yes.example.no.repository.WatchlistRepository;
+import yes.example.no.service.WatchlistService;
+import yes.example.no.service.WebSocketNotificationService;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.HashMap;
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
 
@@ -27,59 +33,197 @@ public class UserController {
     @Autowired
     private GroupSymbolRepository groupSymbolRepo;
 
-    // Get user's watchlist (symbols they have access to)
-    @GetMapping("/watchlist")
-    public ResponseEntity<?> getUserWatchlist(HttpSession session) {
-        try {
-            String username = (String) session.getAttribute("username");
-            if (username == null) {
-                return ResponseEntity.status(401).body("Not authenticated");
-            }
+    @Autowired
+    private WatchlistRepository watchlistRepository;
 
+    @Autowired
+    private WatchlistService watchlistService;
+
+    @Autowired
+    private WebSocketNotificationService notificationService;
+
+    @GetMapping("/watchlist")
+    public ResponseEntity<?> getUserWatchlist(HttpSession session, Principal principal) {
+        try {
+            if (principal == null || principal.getName() == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+    
+            String username = principal.getName();
             Account account = accountRepo.findByUsername(username).orElse(null);
             if (account == null) {
-                return ResponseEntity.status(404).body("Account not found");
+                return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
             }
-
-            List<Map<String, Object>> watchlist = new ArrayList<>();
-            
+    
+            List<Watchlist> userWatchlist = watchlistService.getWatchlistByAccount(account.getId());
+            List<Map<String, Object>> watchlistData = new ArrayList<>();
+    
             if (account.getGroup() != null) {
-                List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(account.getGroup());
-                
-                watchlist = groupSymbols.stream()
-                    .filter(gs -> gs.isCanViewQuotes()) // Only include symbols user can view
-                    .map(gs -> {
-                        Map<String, Object> item = new HashMap<>();
-                        Symbol symbol = gs.getSymbol();
-                        
-                        // Apply markups to prices
+                for (Watchlist watchlistItem : userWatchlist) {
+                    Optional<GroupSymbol> groupSymbol = groupSymbolRepo.findByGroupAndSymbol(account.getGroup(), watchlistItem.getSymbol());
+    
+                    if (groupSymbol.isPresent() && groupSymbol.get().isCanViewQuotes()) {
+                        Symbol symbol = watchlistItem.getSymbol();
+                        GroupSymbol gs = groupSymbol.get();
+    
+                        // Apply markups
                         double bidPrice = symbol.getBidPrice() - gs.getBidMarkup() - (symbol.getBidPrice() * gs.getBidMarkupPercent() / 100);
                         double askPrice = symbol.getAskPrice() + gs.getAskMarkup() + (symbol.getAskPrice() * gs.getAskMarkupPercent() / 100);
-                        
+    
+                        Map<String, Object> item = new HashMap<>();
                         Map<String, Object> symbolData = new HashMap<>();
                         symbolData.put("id", symbol.getId());
                         symbolData.put("name", symbol.getName());
                         symbolData.put("bidPrice", bidPrice);
                         symbolData.put("askPrice", askPrice);
                         symbolData.put("active", symbol.isActive());
-                        
+    
                         item.put("symbol", symbolData);
-                        item.put("groupSymbol", gs);
-                        
-                        return item;
-                    })
-                    .collect(Collectors.toList());
+                        item.put("watchlistId", watchlistItem.getId());
+                        item.put("orderIndex", watchlistItem.getOrderIndex());
+    
+                        watchlistData.add(item);
+                    }
+                }
             }
-
-            return ResponseEntity.ok(watchlist);
+    
+            // ✅ Always return an array (even if empty)
+            return ResponseEntity.ok(watchlistData);
+    
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(500).body("Error loading watchlist: " + e.getMessage());
+            return ResponseEntity.status(500).body(Map.of("error", "Error loading watchlist", "details", e.getMessage()));
         }
     }
+    
 
-
-    // Get user's tradeable symbols (symbols they can trade)
+    @PostMapping("/watchlist/add/{symbolId}")
+    public ResponseEntity<?> addToMyWatchlist(@PathVariable Long symbolId, Principal principal) {
+        try {
+            if (principal == null || principal.getName() == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+    
+            String username = principal.getName();
+            Account account = accountRepo.findByUsername(username).orElse(null);
+            if (account == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+            }
+    
+            if (account.getGroup() == null) {
+                return ResponseEntity.status(403).body(Map.of("error", "No group assigned"));
+            }
+    
+            boolean canView = groupSymbolRepo.findByGroup(account.getGroup()).stream()
+                    .anyMatch(gs -> gs.getSymbol().getId().equals(symbolId) && gs.isCanViewQuotes());
+            if (!canView) {
+                return ResponseEntity.status(403).body(Map.of("error", "Not authorized to view this symbol"));
+            }
+    
+            watchlistService.addToWatchlist(account.getId(), symbolId);
+            notificationService.notifyUserWatchlistChanged(username);
+    
+            // ✅ Always return the updated watchlist
+            return getUserWatchlist(null, principal);
+    
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Error adding symbol", "details", e.getMessage()));
+        }
+    }
+    
+    @PostMapping("/watchlist/add-multiple")
+    public ResponseEntity<?> addMultipleToWatchlist(@RequestBody List<Long> symbolIds, Principal principal) {
+        try {
+            if (principal == null || principal.getName() == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+    
+            String username = principal.getName();
+            Account account = accountRepo.findByUsername(username).orElse(null);
+            if (account == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+            }
+    
+            if (account.getGroup() == null) {
+                return ResponseEntity.status(403).body(Map.of("error", "No group assigned"));
+            }
+    
+            List<Long> accessibleSymbolIds = groupSymbolRepo.findByGroup(account.getGroup()).stream()
+                    .filter(GroupSymbol::isCanViewQuotes)
+                    .map(gs -> gs.getSymbol().getId())
+                    .collect(Collectors.toList());
+    
+            List<Long> validSymbolIds = symbolIds.stream()
+                    .filter(accessibleSymbolIds::contains)
+                    .collect(Collectors.toList());
+    
+            if (validSymbolIds.isEmpty()) {
+                return ResponseEntity.status(403).body(Map.of("error", "No valid symbols to add"));
+            }
+    
+            watchlistService.addMultipleToWatchlist(account.getId(), validSymbolIds);
+            notificationService.notifyUserWatchlistChanged(username);
+    
+            // ✅ Return updated watchlist instead of just "message"
+            return getUserWatchlist(null, principal);
+    
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Error adding symbols", "details", e.getMessage()));
+        }
+    }
+    
+    @DeleteMapping("/watchlist/remove/{symbolId}")
+    public ResponseEntity<?> removeFromWatchlist(@PathVariable Long symbolId, Principal principal) {
+        try {
+            if (principal == null || principal.getName() == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+    
+            String username = principal.getName();
+            Account account = accountRepo.findByUsername(username).orElse(null);
+            if (account == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+            }
+    
+            watchlistService.removeFromWatchlist(account.getId(), symbolId);
+            notificationService.notifyUserWatchlistChanged(username);
+    
+            // ✅ Return updated watchlist
+            return getUserWatchlist(null, principal);
+    
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Error removing symbol", "details", e.getMessage()));
+        }
+    }
+    
+    @PutMapping("/watchlist/reorder")
+    public ResponseEntity<?> reorderWatchlist(@RequestBody List<Long> symbolIds, Principal principal) {
+        try {
+            if (principal == null || principal.getName() == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+    
+            String username = principal.getName();
+            Account account = accountRepo.findByUsername(username).orElse(null);
+            if (account == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "Account not found"));
+            }
+    
+            watchlistService.reorderWatchlist(account.getId(), symbolIds);
+            notificationService.notifyUserWatchlistChanged(username);
+    
+            // ✅ Return updated watchlist
+            return getUserWatchlist(null, principal);
+    
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Error reordering watchlist", "details", e.getMessage()));
+        }
+    }
+    
     @GetMapping("/tradeable-symbols")
     public ResponseEntity<?> getTradeableSymbols(HttpSession session) {
         try {
@@ -131,7 +275,6 @@ public class UserController {
         }
     }
 
-    // Get user profile information
     @GetMapping("/profile")
     public ResponseEntity<?> getUserProfile(HttpSession session) {
         try {
@@ -170,7 +313,6 @@ public class UserController {
         }
     }
 
-    // Get user's current prices with markups applied
     @GetMapping("/prices")
     public ResponseEntity<?> getUserPrices(HttpSession session) {
         try {
@@ -217,9 +359,8 @@ public class UserController {
         }
     }
 
-    // Check if user can trade a specific symbol
     @GetMapping("/can-trade/{symbolId}")
-    public ResponseEntity<?> canTradeSymbol(@PathVariable int symbolId, HttpSession session) {
+    public ResponseEntity<?> canTradeSymbol(@PathVariable Long symbolId, HttpSession session) {
         try {
             String username = (String) session.getAttribute("username");
             if (username == null) {
@@ -236,7 +377,7 @@ public class UserController {
             if (account.getGroup() != null) {
                 List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(account.getGroup());
                 canTrade = groupSymbols.stream()
-                    .anyMatch(gs -> gs.getSymbol().getId() == symbolId && gs.isCanTrade());
+                    .anyMatch(gs -> gs.getSymbol().getId().equals(symbolId) && gs.isCanTrade());
             }
 
             Map<String, Object> response = new HashMap<>();
@@ -250,9 +391,8 @@ public class UserController {
         }
     }
 
-    // Get symbol with markup applied for specific user
     @GetMapping("/symbol/{symbolId}")
-    public ResponseEntity<?> getUserSymbol(@PathVariable int symbolId, HttpSession session) {
+    public ResponseEntity<?> getUserSymbol(@PathVariable Long symbolId, HttpSession session) {
         try {
             String username = (String) session.getAttribute("username");
             if (username == null) {
@@ -270,7 +410,7 @@ public class UserController {
 
             List<GroupSymbol> groupSymbols = groupSymbolRepo.findByGroup(account.getGroup());
             GroupSymbol groupSymbol = groupSymbols.stream()
-                .filter(gs -> gs.getSymbol().getId() == symbolId)
+                .filter(gs -> gs.getSymbol().getId().equals(symbolId))
                 .findFirst()
                 .orElse(null);
 
@@ -299,4 +439,5 @@ public class UserController {
             return ResponseEntity.status(500).body("Error loading symbol: " + e.getMessage());
         }
     }
+
 }

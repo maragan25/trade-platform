@@ -126,6 +126,9 @@ public class LoginController {
             AccountDto accountDto = new AccountDto(account);
             LoginResponseDto response = new LoginResponseDto(accountDto, "Login successful");
     
+            session.setAttribute("username", account.getUsername());
+            session.setAttribute("isAdmin", account.isAdmin());
+
             return ResponseEntity.ok(response);
     
         } catch (Exception e) {

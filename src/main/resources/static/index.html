@@ -20,6 +20,80 @@
             min-height: 100vh;
         }
 
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #2d2d2d;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 500px;
+            color: white;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: white;
+        }
+
+        .symbol-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #3a3a3a;
+            border-radius: 5px;
+        }
+
+        .symbol-checkbox input {
+            margin-right: 10px;
+        }
+
+        .add-symbols-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+            background: #4caf50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            max-width: 300px;
+        }
+
+        .notification.error {
+            background: #f44336;
+        }
+
         .header {
             background: #2d2d2d;
             padding: 15px 20px;
@@ -368,6 +442,7 @@
             <div class="sidebar">
                 <div class="sidebar-section">
                     <div class="sidebar-title">My Watchlist</div>
+                    <button class="add-symbols-btn" onclick="openAddSymbolsModal()">+ Add Symbols</button>
                     <div id="watchlistContainer"></div>
                 </div>
             </div>
@@ -436,6 +511,16 @@
         </div>
     </div>
 
+    <div id="addSymbolsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddSymbolsModal()">&times;</span>
+            <h2>Add Symbols to Watchlist</h2>
+            <p>Select symbols from your group to add to your watchlist:</p>
+            <div id="availableSymbolsList"></div>
+            <button onclick="addSelectedSymbolsToWatchlist()" style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 15px;">Add Selected</button>
+        </div>
+    </div>
+
     <script>
         let currentUser = null;
         let stompClient = null;
@@ -444,6 +529,7 @@
         let tradeHistory = [];
         let selectedSymbol = null;
         let currentPrices = {};
+        let availableGroupSymbols = [];
 
         async function login(event) {
             event.preventDefault();
@@ -479,17 +565,31 @@
         async function initializeTradingInterface() {
             updateAccountDisplay();
             await loadWatchlist();
+            await loadAvailableGroupSymbols();
             await loadOpenTrades();
             await loadTradeHistory();
             connectWebSocket();
         }
-
         function updateAccountDisplay() {
             document.getElementById('accountBalance').textContent = currentUser.balance.toFixed(2);
             document.getElementById('accountEquity').textContent = currentUser.equity.toFixed(2);
             document.getElementById('accountMargin').textContent = currentUser.marginUsed.toFixed(2);
             document.getElementById('accountFreeMargin').textContent = currentUser.freeMargin.toFixed(2);
             document.getElementById('userGroup').textContent = currentUser.group ? currentUser.group.name : 'None';
+        }
+
+        async function loadAvailableGroupSymbols() {
+            try {
+                const response = await fetch('/api/user/tradeable-symbols', { credentials: 'include' });
+                if (response.ok) {
+                    availableGroupSymbols = await response.json();
+                } else {
+                    availableGroupSymbols = [];
+                }
+            } catch (error) {
+                console.error('Error loading available symbols:', error);
+                availableGroupSymbols = [];
+            }
         }
 
         async function loadWatchlist() {
@@ -500,6 +600,90 @@
             } catch (error) {
                 console.error('Error loading watchlist:', error);
             }
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('addSymbolsModal');
+            if (event.target == modal) {
+                closeAddSymbolsModal();
+            }
+        }
+
+        async function addSelectedSymbolsToWatchlist() {
+            const checkboxes = document.querySelectorAll('#availableSymbolsList input[type="checkbox"]:checked');
+            const symbolIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+            if (!symbolIds.length) {
+                showNotification('Please select at least one symbol', true);
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/user/watchlist/add-multiple', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(symbolIds)
+                });
+
+                if (response.ok) {
+                    showNotification('Symbols added to watchlist successfully');
+                    closeAddSymbolsModal();
+                    await loadWatchlist(); // Refresh watchlist
+                } else {
+                    const error = await response.text();
+                    showNotification('Failed to add symbols: ' + error, true);
+                }
+            } catch (error) {
+                console.error('Error adding symbols to watchlist:', error);
+                showNotification('Failed to add symbols to watchlist', true);
+            }
+        }
+
+        function openAddSymbolsModal() {
+            if (!availableGroupSymbols.length) {
+                showNotification('No additional symbols available from your group', true);
+                return;
+            }
+
+            const modal = document.getElementById('addSymbolsModal');
+            const symbolsList = document.getElementById('availableSymbolsList');
+            
+            // Get symbols already in watchlist
+            const watchlistSymbolIds = watchlist.map(item => item.symbol.id);
+            
+            // Filter available symbols not in watchlist
+            const availableSymbols = availableGroupSymbols.filter(item => 
+                !watchlistSymbolIds.includes(item.symbol.id)
+            );
+
+            if (!availableSymbols.length) {
+                showNotification('All available symbols are already in your watchlist', true);
+                return;
+            }
+
+            symbolsList.innerHTML = '';
+            availableSymbols.forEach(item => {
+                const symbolDiv = document.createElement('div');
+                symbolDiv.className = 'symbol-checkbox';
+                symbolDiv.innerHTML = `
+                    <input type="checkbox" id="symbol_${item.symbol.id}" value="${item.symbol.id}">
+                    <label for="symbol_${item.symbol.id}">
+                        <strong>${item.symbol.name}</strong>
+                        <div style="font-size: 12px; color: #aaa;">
+                            Bid: ${item.symbol.bidPrice ? item.symbol.bidPrice.toFixed(5) : '-'} | 
+                            Ask: ${item.symbol.askPrice ? item.symbol.askPrice.toFixed(5) : '-'}
+                        </div>
+                    </label>
+                `;
+                symbolsList.appendChild(symbolDiv);
+            });
+
+            modal.style.display = 'block';
+        }
+
+        function closeAddSymbolsModal() {
+            document.getElementById('addSymbolsModal').style.display = 'none';
         }
 
         function renderWatchlist() {
@@ -658,32 +842,111 @@
         }
 
         function connectWebSocket() {
-            const socket = new SockJS('/ws');
-            stompClient = Stomp.over(socket);
-            stompClient.connect({}, function(frame) {
-                console.log('Connected: ' + frame);
-                // Subscribe to price updates
-                stompClient.subscribe('/user/queue/prices', function(message) {
-                    const priceData = JSON.parse(message.body);
-                    if (Array.isArray(priceData)) {
-                        priceData.forEach(price => currentPrices[price.symbolId] = price);
-                    } else {
-                        currentPrices[priceData.symbolId] = priceData;
-                    }
-                    updatePriceDisplays();
-                });
-                // Subscribe to account updates
-                stompClient.subscribe('/user/queue/account', function(message) {
-                    const accountData = JSON.parse(message.body);
-                    currentUser.balance = accountData.balance;
-                    currentUser.equity = accountData.equity;
-                    currentUser.marginUsed = accountData.marginUsed;
-                    currentUser.freeMargin = accountData.freeMargin;
-                    updateAccountDisplay();
-                });
-                // Request initial price data
-                stompClient.send("/app/subscribe", {}, JSON.stringify({ username: currentUser.username }));
-            });
+    const socket = new SockJS('/ws');
+    stompClient = Stomp.over(socket);
+
+    stompClient.connect({}, function(frame) {
+        console.log('Connected: ' + frame);
+
+        // Subscribe to price updates
+        stompClient.subscribe('/user/queue/prices', function(message) {
+            const priceData = JSON.parse(message.body);
+            if (Array.isArray(priceData)) {
+                priceData.forEach(price => currentPrices[price.symbolId] = price);
+            } else {
+                currentPrices[priceData.symbolId] = priceData;
+            }
+            updatePriceDisplays();
+        });
+
+        // Subscribe to account updates
+        stompClient.subscribe('/user/queue/account', function(message) {
+            const accountData = JSON.parse(message.body);
+            currentUser.balance = accountData.balance;
+            currentUser.equity = accountData.equity;
+            currentUser.marginUsed = accountData.marginUsed;
+            currentUser.freeMargin = accountData.freeMargin;
+            updateAccountDisplay();
+        });
+
+        // Subscribe to group + user notifications (single handler)
+        stompClient.subscribe('/user/queue/notifications', function(message) {
+            const notification = JSON.parse(message.body);
+
+            if (notification.type === "WATCHLIST_CHANGED") {
+                // fetch updated watchlist via HTTP
+                fetch("/api/user/watchlist")
+                    .then(res => res.json())
+                    .then(watchlist => {
+                        if (Array.isArray(watchlist)) {
+                            renderWatchlist(watchlist);
+                        } else {
+                            console.error("Watchlist is not an array", watchlist);
+                        }
+                    });
+            } else {
+                // pass other notification types to your handler
+                handleGroupNotification(notification);
+            }
+        });
+
+        // Subscribe to group updates (broadcast topic)
+        stompClient.subscribe('/topic/group-updates', function(message) {
+            const update = JSON.parse(message.body);
+            handleGroupUpdate(update);
+        });
+
+        stompClient.subscribe(`/topic/group-permissions.${currentUser.groupId}`, (message) => {
+            const payload = JSON.parse(message.body);
+            if (payload.type === "PERMISSIONS_UPDATE") {
+                updatePermissions(payload.symbols); // <-- your function to store permission map
+            }
+        });
+
+
+        // Request initial price data
+        stompClient.send("/app/subscribe", {}, JSON.stringify({ username: currentUser.username }));
+    });
+}
+
+
+        function showNotification(message, isError = false) {
+            const notification = document.createElement('div');
+            notification.className = `notification${isError ? ' error' : ''}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 5000);
+        }
+
+        function handleGroupUpdate(update) {
+            console.log('Group update:', update);
+            // Handle broader group updates
+            if (update.type === 'GROUP_SYMBOLS_CHANGED') {
+                loadWatchlist();
+                loadAvailableGroupSymbols();
+            }
+        }
+
+        function handleGroupNotification(notification) {
+            console.log('Group notification:', notification);
+            
+            if (notification.type === 'GROUP_SYMBOLS_CHANGED' || 
+                notification.type === 'SYMBOL_ACCESS_CHANGED' ||
+                notification.type === 'GROUP_CHANGED' ||
+                notification.type === 'WATCHLIST_CHANGED') {
+                
+                // Reload the user's watchlist and available symbols
+                loadWatchlist();
+                loadAvailableGroupSymbols();
+                
+                // Show notification to user
+                showNotification(notification.message || 'Your available symbols have been updated');
+            }
         }
 
         function updatePriceDisplays() {

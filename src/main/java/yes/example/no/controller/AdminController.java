@@ -97,7 +97,7 @@ public class AdminController {
             // Update symbol prices
             symbol.setBidPrice(request.getBidPrice());
             symbol.setAskPrice(request.getAskPrice());
-            symbolRepo.save(symbol);
+            symbolRepo.save(symbol);        
             
             // Create price update message
             Map<String, Object> priceUpdate = Map.of(
@@ -109,7 +109,7 @@ public class AdminController {
             );
             
             // Broadcast to all connected clients immediately
-            messagingTemplate.convertAndSend("/topic/prices", priceUpdate);
+            priceWebSocketController.broadcastPriceUpdate(symbol);
             
             return ResponseEntity.ok().build();
             
@@ -472,72 +472,3 @@ public class AdminController {
         }
     }
 }
-
-    /* 
-    @PostMapping("/broadcast-message")
-    public ResponseEntity<Void> broadcastMessage(@RequestParam String message, 
-                                                @RequestParam(defaultValue = "info") String type,
-                                                Principal principal) {
-        validateAdmin(principal);
-        
-        Map<String, Object> broadcastData = Map.of(
-            "type", "ADMIN_MESSAGE",
-            "messageType", type,
-            "message", message,
-            "timestamp", System.currentTimeMillis(),
-            "from", "Admin"
-        );
-        
-        messagingTemplate.convertAndSend("/topic/admin-messages", broadcastData);
-        
-        return ResponseEntity.ok().build();
-    }
-
-    @PostMapping("/emergency-stop-trading")
-    public ResponseEntity<Void> emergencyStopTrading(@RequestParam String reason, Principal principal) {
-        validateAdmin(principal);
-        
-        // Deactivate all symbols to stop trading
-        List<Symbol> symbols = symbolRepo.findByActiveTrue();
-        symbols.forEach(symbol -> symbol.setActive(false));
-        symbolRepo.saveAll(symbols);
-        
-        // Broadcast emergency message
-        Map<String, Object> emergencyData = Map.of(
-            "type", "EMERGENCY_STOP",
-            "reason", reason,
-            "timestamp", System.currentTimeMillis(),
-            "from", principal.getName()
-        );
-        
-        messagingTemplate.convertAndSend("/topic/admin-messages", emergencyData);
-        
-        System.out.println("EMERGENCY STOP: Trading halted by " + principal.getName() + 
-                          ". Reason: " + reason);
-        
-        return ResponseEntity.ok().build();
-    }
-
-    @PostMapping("/resume-trading")
-    public ResponseEntity<Void> resumeTrading(Principal principal) {
-        validateAdmin(principal);
-        
-        // Reactivate all symbols
-        List<Symbol> symbols = symbolRepo.findAll();
-        symbols.forEach(symbol -> symbol.setActive(true));
-        symbolRepo.saveAll(symbols);
-        
-        // Broadcast resume message
-        Map<String, Object> resumeData = Map.of(
-            "type", "TRADING_RESUMED",
-            "timestamp", System.currentTimeMillis(),
-            "from", principal.getName()
-        );
-        
-        messagingTemplate.convertAndSend("/topic/admin-messages", resumeData);
-        
-        System.out.println("Trading resumed by " + principal.getName());
-        
-        return ResponseEntity.ok().build();
-    }
-*/        

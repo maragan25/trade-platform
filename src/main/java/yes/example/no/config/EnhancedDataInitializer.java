@@ -10,23 +10,21 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class EnhancedDataInitializer implements CommandLineRunner {
-    
-    private final AccountRepository accountRepo;
+
     private final SymbolRepository symbolRepo;
     private final GroupRepository groupRepo;
+    private final AccountRepository accountRepo;
     private final GroupSymbolRepository groupSymbolRepo;
-    private final WatchlistRepository watchlistRepo;
+    private final WatchlistRepository watchlistRepo; // Added this
     private final PasswordEncoder passwordEncoder;
-    
+
     @Override
     public void run(String... args) throws Exception {
-        // Create symbols first
+        
         createSymbols();
         
-        // Create basic groups only if none exist - let admin create more via UI
         createBasicGroups();
         
-        // Create accounts
         createAccounts();
         
         System.out.println("=== Data Initialization Complete ===");

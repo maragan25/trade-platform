@@ -14,56 +14,85 @@ import java.util.Optional;
 @Transactional
 public class WatchlistService {
     
-    private final WatchlistRepository watchlistRepo;
-    private final AccountRepository accountRepo;
-    private final SymbolRepository symbolRepo;
+    private final WatchlistRepository watchlistRepository;
+    private final AccountRepository accountRepository;
+    private final SymbolRepository symbolRepository;
 
     public List<Watchlist> getWatchlistByAccount(Long accountId) {
-        Account account = accountRepo.findById(accountId).orElseThrow();
-        return watchlistRepo.findByAccountOrderBySortOrder(account);
+        return watchlistRepository.findByAccountIdOrderByOrderIndexAsc(accountId);
     }
 
+    @Transactional
     public Watchlist addToWatchlist(Long accountId, Long symbolId) {
-        Account account = accountRepo.findById(accountId).orElseThrow();
-        Symbol symbol = symbolRepo.findById(symbolId).orElseThrow();
-        
-        // Check if already exists
-        Optional<Watchlist> existing = watchlistRepo.findByAccountAndSymbol(account, symbol);
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+        Symbol symbol = symbolRepository.findById(symbolId)
+                .orElseThrow(() -> new RuntimeException("Symbol not found"));
+
+        // Check if already in watchlist
+        Optional<Watchlist> existing = watchlistRepository.findByAccountAndSymbol(account, symbol);
         if (existing.isPresent()) {
-            throw new RuntimeException("Symbol already in watchlist");
+            return existing.get();
         }
 
-        Watchlist watchlist = new Watchlist();
-        watchlist.setAccount(account);
-        watchlist.setSymbol(symbol);
-        watchlist.setSortOrder(getNextSortOrder(account));
+        // Get next order index
+        Integer maxOrder = watchlistRepository.findMaxOrderIndexByAccount(account);
+        int nextOrder = (maxOrder != null) ? maxOrder + 1 : 0;
+
+        Watchlist watchlistItem = new Watchlist(account, symbol);
+        watchlistItem.setOrderIndex(nextOrder);
         
-        return watchlistRepo.save(watchlist);
+        return watchlistRepository.save(watchlistItem);
     }
 
+    @Transactional
     public void removeFromWatchlist(Long accountId, Long symbolId) {
-        Account account = accountRepo.findById(accountId).orElseThrow();
-        Symbol symbol = symbolRepo.findById(symbolId).orElseThrow();
-        
-        Watchlist watchlist = watchlistRepo.findByAccountAndSymbol(account, symbol)
-                .orElseThrow(() -> new RuntimeException("Symbol not in watchlist"));
-        
-        watchlistRepo.delete(watchlist);
+        watchlistRepository.deleteByAccountIdAndSymbolId(accountId, symbolId);
     }
 
+    @Transactional
     public void reorderWatchlist(Long accountId, List<Long> symbolIds) {
-        Account account = accountRepo.findById(accountId).orElseThrow();
-        
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+
         for (int i = 0; i < symbolIds.size(); i++) {
-            Symbol symbol = symbolRepo.findById(symbolIds.get(i)).orElseThrow();
-            Watchlist watchlist = watchlistRepo.findByAccountAndSymbol(account, symbol)
-                    .orElseThrow();
-            watchlist.setSortOrder(i);
-            watchlistRepo.save(watchlist);
+            Long symbolId = symbolIds.get(i);
+            Symbol symbol = symbolRepository.findById(symbolId)
+                    .orElseThrow(() -> new RuntimeException("Symbol not found"));
+            
+            Optional<Watchlist> watchlistItem = watchlistRepository.findByAccountAndSymbol(account, symbol);
+            if (watchlistItem.isPresent()) {
+                watchlistItem.get().setOrderIndex(i);
+                watchlistRepository.save(watchlistItem.get());
+            }
         }
     }
 
-    private int getNextSortOrder(Account account) {
-        return watchlistRepo.findMaxSortOrderByAccount(account).orElse(-1) + 1;
+    @Transactional
+    public void addMultipleToWatchlist(Long accountId, List<Long> symbolIds) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+
+        Integer maxOrder = watchlistRepository.findMaxOrderIndexByAccount(account);
+        int currentOrder = (maxOrder != null) ? maxOrder + 1 : 0;
+
+        for (Long symbolId : symbolIds) {
+            Symbol symbol = symbolRepository.findById(symbolId)
+                    .orElseThrow(() -> new RuntimeException("Symbol not found: " + symbolId));
+
+            // Check if already in watchlist
+            Optional<Watchlist> existing = watchlistRepository.findByAccountAndSymbol(account, symbol);
+            if (existing.isEmpty()) {
+                Watchlist watchlistItem = new Watchlist(account, symbol);
+                watchlistItem.setOrderIndex(currentOrder++);
+                watchlistRepository.save(watchlistItem);
+            }
+        }
     }
+    
+    private int getNextOrderIndex(Account account) {
+        Integer maxOrder = watchlistRepository.findMaxOrderIndexByAccount(account);
+        return (maxOrder != null ? maxOrder : -1) + 1;
+    }
+    
 }

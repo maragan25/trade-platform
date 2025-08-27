@@ -1,27 +1,40 @@
 package yes.example.no.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
-import java.time.LocalDateTime;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 @Entity
-@Getter
-@Setter
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"account_id", "symbol_id"}))
+@Table(name = "watchlist", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"account_id", "symbol_id"})
+})
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Watchlist {
+    
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @ManyToOne
-    @JoinColumn(name = "account_id")
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "account_id", nullable = false)
     private Account account;
-
-    @ManyToOne
-    @JoinColumn(name = "symbol_id")
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "symbol_id", nullable = false)
     private Symbol symbol;
-
-    private int sortOrder = 0; // For custom ordering
-    private LocalDateTime addedAt = LocalDateTime.now();
+    
+    @Column(name = "order_index")
+    private Integer orderIndex = 0;
+    
+    @Column(name = "created_at")
+    private java.time.LocalDateTime createdAt = java.time.LocalDateTime.now();
+    
+    public Watchlist(Account account, Symbol symbol) {
+        this.account = account;
+        this.symbol = symbol;
+        this.createdAt = java.time.LocalDateTime.now();
+    }
 }

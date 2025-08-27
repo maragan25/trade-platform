@@ -43,6 +43,9 @@ public class AuthenticationController {
         response.setAccount(account);
         response.setToken("session-authenticated");
         
+        session.setAttribute("username", account.getUsername());
+        session.setAttribute("isAdmin", account.isAdmin());
+
         return ResponseEntity.ok(response);
     }
 

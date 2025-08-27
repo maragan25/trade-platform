@@ -7,7 +7,7 @@ import lombok.Setter;
 @Entity
 @Getter
 @Setter
-@Table(name = "group_symbols")
+@Table(name = "group_symbol")
 public class GroupSymbol {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
